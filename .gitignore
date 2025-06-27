@@ -109,4 +109,4 @@ bin/
 # Local configuration
 config.local.yaml
 config.local.yml
-config.local.json 
+config.local.json mcp-prometheus
