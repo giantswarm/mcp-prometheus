@@ -1,29 +1,53 @@
 # MCP Prometheus
 
-A [Model Context Protocol][mcp] (MCP) server for Prometheus, written in Go.
+A comprehensive [Model Context Protocol][mcp] (MCP) server for Prometheus, written in Go.
 
-This provides access to your Prometheus metrics and queries through standardized MCP interfaces, allowing AI assistants to execute PromQL queries and analyze your metrics data.
+This provides complete access to your Prometheus metrics, queries, and system information through standardized MCP interfaces, allowing AI assistants to execute PromQL queries, discover metrics, explore labels, and analyze your monitoring infrastructure.
 
 [mcp]: https://modelcontextprotocol.io
 
 ## Features
 
-- [x] Execute PromQL queries against Prometheus
-  - [x] Instant queries with optional timestamp
-  - [x] Range queries with time bounds and step intervals
-- [x] Discover and explore metrics
-  - [x] List available metrics
-  - [x] Get metadata for specific metrics
-  - [x] View scrape target information
-- [x] Authentication support
-  - [x] Basic auth from environment variables
-  - [x] Bearer token auth from environment variables
-  - [x] Multi-tenant organization ID headers
-- [x] Multiple transport protocols
-  - [x] Standard I/O (stdio) - default
-  - [x] Server-Sent Events (SSE) over HTTP
-  - [x] Streamable HTTP transport
-- [x] Cross-platform binary distribution
+### 🔍 **Query Execution**
+- [x] **Instant queries** with optional timestamp and enhanced parameters
+- [x] **Range queries** with time bounds, step intervals, and performance options
+- [x] **Query optimization** with timeout, limit, and stats parameters
+- [x] **Result truncation** with intelligent user guidance for large datasets
+
+### 📊 **Metrics Discovery**
+- [x] **List all available metrics** with filtering and time-based selection
+- [x] **Get detailed metadata** for specific metrics
+- [x] **Metric exploration** with enhanced filtering options
+
+### 🏷️ **Label & Series Discovery**
+- [x] **List all label names** with filtering and limits
+- [x] **Get label values** for specific labels with advanced filtering
+- [x] **Find series** by label matchers with time bounds
+- [x] **Advanced label matching** with complex selectors
+
+### 🎯 **Target & System Information**
+- [x] **Scrape target information** and health status
+- [x] **Build information** and version details
+- [x] **Runtime information** and system status
+- [x] **Configuration and flags** inspection
+- [x] **TSDB statistics** and cardinality information
+
+### 🚨 **Alerting & Rules**
+- [x] **Active alerts** monitoring
+- [x] **AlertManager discovery** and status
+- [x] **Recording and alerting rules** inspection
+
+### 🔬 **Advanced Features**
+- [x] **Exemplar queries** for trace correlation
+- [x] **Target metadata** exploration
+- [x] **Multi-tenant support** with dynamic organization IDs
+- [x] **Dynamic client configuration** per-query
+
+### 🔐 **Authentication & Transport**
+- [x] **Multiple authentication methods** (Basic, Bearer token)
+- [x] **Multi-tenant organization headers** (Cortex, Mimir, Thanos)
+- [x] **Multiple transport protocols** (stdio, SSE, HTTP)
+- [x] **Cross-platform binary distribution**
 
 ## Installation
 
@@ -44,7 +68,7 @@ go build -o mcp-prometheus
 Configure the MCP server through environment variables (all optional):
 
 ```bash
-# Optional: Prometheus server configuration (takes precedence over tool parameters)
+# Optional: Default Prometheus server configuration
 export PROMETHEUS_URL=http://your-prometheus-server:9090
 
 # Optional: Authentication credentials (choose one)
@@ -55,11 +79,11 @@ export PROMETHEUS_PASSWORD=your_password
 # For bearer token auth  
 export PROMETHEUS_TOKEN=your_token
 
-# Optional: For multi-tenant setups like Cortex, Mimir or Thanos (takes precedence over tool parameters)
+# Optional: Default organization ID for multi-tenant setups
 export PROMETHEUS_ORGID=your_organization_id
 ```
 
-**Note**: If `PROMETHEUS_URL` or `PROMETHEUS_ORGID` environment variables are not set, they can be provided as parameters to individual tool calls. Environment variables always take precedence over tool parameters when both are provided.
+**Dynamic Configuration**: All MCP tools support `prometheus_url` and `org_id` parameters for per-query configuration, allowing you to query multiple Prometheus instances and organizations dynamically.
 
 ## Usage
 
@@ -89,8 +113,7 @@ Add the server configuration to your MCP client. For example, with Claude Deskto
       "args": ["serve"],
       "env": {
         "PROMETHEUS_URL": "http://your-prometheus-server:9090",
-        "PROMETHEUS_USERNAME": "your_username",
-        "PROMETHEUS_PASSWORD": "your_password"
+        "PROMETHEUS_ORGID": "your-default-org"
       }
     }
   }
@@ -99,142 +122,221 @@ Add the server configuration to your MCP client. For example, with Claude Deskto
 
 ## Available Tools
 
-| Tool | Description | Parameters |
-|------|-------------|------------|
-| `execute_query` | Execute a PromQL instant query | `query` (required), `prometheus_url` (optional), `orgid` (optional), `time` (optional), `unlimited` (optional) |
-| `execute_range_query` | Execute a PromQL range query | `query`, `start`, `end`, `step` (all required), `prometheus_url` (optional), `orgid` (optional), `unlimited` (optional) |
-| `list_metrics` | List all available metrics | `prometheus_url` (optional), `orgid` (optional) |
-| `get_metric_metadata` | Get metadata for a specific metric | `metric` (required), `prometheus_url` (optional), `orgid` (optional) |
-| `get_targets` | Get information about scrape targets | `prometheus_url` (optional), `orgid` (optional) |
+### 🔍 Query Execution Tools
 
-**Parameter Details:**
-- `prometheus_url`: Prometheus server URL (required if PROMETHEUS_URL environment variable is not set)
-- `orgid`: Organization ID for multi-tenant setups (optional, overridden by PROMETHEUS_ORGID environment variable if set)
+| Tool | Description | Required Parameters | Optional Parameters |
+|------|-------------|-------------------|-------------------|
+| `mcp_prometheus_execute_query` | Execute PromQL instant query | `query` | `prometheus_url`, `org_id`, `time`, `timeout`, `limit`, `stats`, `lookback_delta`, `unlimited` |
+| `mcp_prometheus_execute_range_query` | Execute PromQL range query | `query`, `start`, `end`, `step` | `prometheus_url`, `org_id`, `timeout`, `limit`, `stats`, `lookback_delta`, `unlimited` |
 
-### Example Tool Usage
+### 📊 Metrics Discovery Tools
 
-#### Execute an instant query
+| Tool | Description | Required Parameters | Optional Parameters |
+|------|-------------|-------------------|-------------------|
+| `mcp_prometheus_list_metrics` | List all available metrics | - | `prometheus_url`, `org_id`, `start_time`, `end_time`, `matches` |
+| `mcp_prometheus_get_metric_metadata` | Get metadata for specific metric | `metric` | `prometheus_url`, `org_id`, `limit` |
+
+### 🏷️ Label & Series Discovery Tools
+
+| Tool | Description | Required Parameters | Optional Parameters |
+|------|-------------|-------------------|-------------------|
+| `mcp_prometheus_list_label_names` | Get all available label names | - | `prometheus_url`, `org_id`, `start_time`, `end_time`, `matches`, `limit` |
+| `mcp_prometheus_list_label_values` | Get values for specific label | `label` | `prometheus_url`, `org_id`, `start_time`, `end_time`, `matches`, `limit` |
+| `mcp_prometheus_find_series` | Find series by label matchers | `matches` | `prometheus_url`, `org_id`, `start_time`, `end_time`, `limit` |
+
+### 🎯 Target & System Information Tools
+
+| Tool | Description | Required Parameters | Optional Parameters |
+|------|-------------|-------------------|-------------------|
+| `mcp_prometheus_get_targets` | Get scrape target information | - | `prometheus_url`, `org_id` |
+| `mcp_prometheus_get_build_info` | Get Prometheus build information | - | `prometheus_url`, `org_id` |
+| `mcp_prometheus_get_runtime_info` | Get Prometheus runtime information | - | `prometheus_url`, `org_id` |
+| `mcp_prometheus_get_flags` | Get Prometheus runtime flags | - | `prometheus_url`, `org_id` |
+| `mcp_prometheus_get_config` | Get Prometheus configuration | - | `prometheus_url`, `org_id` |
+| `mcp_prometheus_get_tsdb_stats` | Get TSDB cardinality statistics | - | `prometheus_url`, `org_id`, `limit` |
+
+### 🚨 Alerting & Rules Tools
+
+| Tool | Description | Required Parameters | Optional Parameters |
+|------|-------------|-------------------|-------------------|
+| `mcp_prometheus_get_alerts` | Get active alerts | - | `prometheus_url`, `org_id` |
+| `mcp_prometheus_get_alertmanagers` | Get AlertManager discovery info | - | `prometheus_url`, `org_id` |
+| `mcp_prometheus_get_rules` | Get recording and alerting rules | - | `prometheus_url`, `org_id` |
+
+### 🔬 Advanced Tools
+
+| Tool | Description | Required Parameters | Optional Parameters |
+|------|-------------|-------------------|-------------------|
+| `mcp_prometheus_query_exemplars` | Query exemplars for traces | `query`, `start`, `end` | `prometheus_url`, `org_id` |
+| `mcp_prometheus_get_targets_metadata` | Get metadata from specific targets | - | `prometheus_url`, `org_id`, `match_target`, `metric`, `limit` |
+
+### 🔧 Enhanced Parameters
+
+**Connection Parameters** (available on all tools):
+- `prometheus_url`: Prometheus server URL (e.g., 'http://localhost:9090')
+- `org_id`: Organization ID for multi-tenant setups (e.g., 'tenant-123')
+
+**Query Enhancement Parameters**:
+- `timeout`: Query timeout (e.g., '30s', '1m', '5m')
+- `limit`: Maximum number of returned entries
+- `stats`: Include query statistics ('all')
+- `lookback_delta`: Query lookback delta (e.g., '5m')
+- `unlimited`: Set to 'true' for unlimited output (WARNING: may impact performance)
+
+**Time Filtering Parameters**:
+- `start_time`, `end_time`: RFC3339 timestamps for filtering
+- `matches`: Array of label matchers (e.g., `['{job="prometheus"}', '{__name__=~"http_.*"}']`)
+
+## Example Usage
+
+### Basic Query Execution
+
 ```json
 {
   "query": "up",
   "prometheus_url": "http://prometheus:9090",
-  "orgid": "tenant-123",
-  "time": "2023-01-01T00:00:00Z"
+  "org_id": "production"
 }
 ```
 
-#### Execute a range query
+### Enhanced Query with Performance Options
+
 ```json
 {
   "query": "rate(http_requests_total[5m])",
-  "prometheus_url": "http://prometheus:9090",
-  "start": "2023-01-01T00:00:00Z",
-  "end": "2023-01-01T01:00:00Z", 
-  "step": "1m"
+  "prometheus_url": "http://prometheus:9090", 
+  "timeout": "30s",
+  "limit": "100",
+  "stats": "all"
 }
 ```
 
-#### Get metric metadata
+### Range Query with Time Bounds
+
 ```json
 {
-  "metric": "http_requests_total",
+  "query": "cpu_usage_percent",
+  "start": "2025-01-27T00:00:00Z",
+  "end": "2025-01-27T01:00:00Z",
+  "step": "1m",
   "prometheus_url": "http://prometheus:9090"
 }
 ```
 
-**Note**: The `prometheus_url` and `orgid` parameters are optional if the corresponding environment variables are set.
+### Label Discovery with Filtering
+
+```json
+{
+  "prometheus_url": "http://prometheus:9090",
+  "matches": ["up{job=\"kubernetes-nodes\"}"],
+  "limit": "20"
+}
+```
+
+### Series Discovery
+
+```json
+{
+  "matches": ["{__name__=~\"http_.*\", job=\"api-server\"}"],
+  "prometheus_url": "http://prometheus:9090",
+  "start_time": "2025-01-27T00:00:00Z",
+  "limit": "50"
+}
+```
+
+### Multi-tenant Query
+
+```json
+{
+  "query": "container_memory_usage_bytes",
+  "prometheus_url": "http://cortex-gateway:8080/prometheus",
+  "org_id": "team-platform"
+}
+```
+
+## Query Result Optimization
+
+The MCP server includes intelligent query result handling:
+
+- **Automatic truncation** for results > 50k characters
+- **User guidance** for query optimization when results are large
+- **Performance tips** including aggregation functions and filtering
+- **Unlimited output option** with performance warnings
+
+Example truncation message:
+```
+⚠️  RESULT TRUNCATED: The query returned a very large result (>50k characters).
+
+💡 To optimize your query and get less output, consider:
+   • Adding more specific label filters: {app="specific-app", namespace="specific-ns"}
+   • Using aggregation functions: sum(), avg(), count(), etc.
+   • Using topk() or bottomk() to get only top/bottom N results
+
+🔧 To get the full untruncated result, add "unlimited": "true" to your query parameters.
+```
 
 ## Transport Options
 
 The server supports multiple transport protocols:
 
 ### stdio (Default)
-Standard input/output - suitable for MCP clients that spawn the server as a subprocess.
-
 ```bash
 ./mcp-prometheus serve --transport stdio
 ```
 
 ### SSE (Server-Sent Events)
-HTTP-based transport using Server-Sent Events for real-time communication.
-
 ```bash
 ./mcp-prometheus serve --transport sse --http-addr :8080
 ```
 
-Access endpoints:
-- SSE: `http://localhost:8080/sse`
-- Messages: `http://localhost:8080/message`
-
 ### Streamable HTTP
-HTTP transport with streamable request/response handling.
-
 ```bash
 ./mcp-prometheus serve --transport streamable-http --http-addr :8080
 ```
 
-Access endpoint: `http://localhost:8080/mcp`
-
 ## Development
 
-### Requirements
+### Architecture
 
-- Go 1.24.4 or later
-- Access to a Prometheus server for testing
+The server follows a modern, DRY architecture:
 
-### Building
-
-```bash
-go build -o mcp-prometheus
-```
-
-### Testing
-
-```bash
-go test ./...
-```
+- **Modular tool registration** with parameter reuse
+- **Dynamic client creation** for multi-instance support
+- **Centralized error handling** and parameter validation
+- **Helper functions** to reduce code repetition by 90%
 
 ### Project Structure
 
 ```
 mcp-prometheus/
-├── cmd/                    # CLI commands
-│   ├── root.go            # Root command definition
-│   ├── serve.go           # Server command implementation
-│   └── version.go         # Version command
+├── cmd/                    # CLI commands and version info
 ├── internal/
-│   ├── server/            # Server infrastructure
-│   │   ├── context.go     # Server context and configuration
-│   │   └── doc.go         # Package documentation
-│   └── tools/
-│       └── prometheus/    # Prometheus MCP tools
-│           ├── client.go  # Prometheus HTTP client
-│           ├── tools.go   # Tool registration and handlers
-│           └── doc.go     # Package documentation
+│   ├── server/            # Server context and configuration  
+│   └── tools/prometheus/  # 18 comprehensive MCP tools
 ├── main.go                # Application entry point
-├── go.mod                 # Go module definition
-└── README.md              # This file
+├── go.mod                 # Go dependencies
+└── README.md              # This documentation
 ```
 
-### Architecture
+### Code Quality Improvements
 
-The server follows a modular architecture:
+- **500+ lines reduced to ~85 lines** in main registration
+- **Eliminated 255+ lines** of redundant boilerplate
+- **Parameter helper functions** for DRY parameter definitions
+- **Centralized client management** with dynamic configuration
+- **Consistent error handling** across all tools
 
-- **cmd/**: Command-line interface using Cobra
-- **internal/server/**: Core server infrastructure with context management
-- **internal/tools/prometheus/**: Prometheus MCP tools
-- **Transport Layer**: Pluggable transport protocols (stdio, SSE, HTTP)
+### Building & Testing
 
-### Adding New Features
+```bash
+# Build the binary
+go build -o mcp-prometheus
 
-1. Extend the Prometheus client in `internal/tools/prometheus/client.go`
-2. Add new tool definitions in `internal/tools/prometheus/tools.go`
-3. Register tools with the MCP server
-4. Update documentation
+# Run tests
+go test ./...
+```
 
 ## Authentication
-
-The server supports multiple authentication methods:
 
 ### Basic Authentication
 ```bash
@@ -248,20 +350,21 @@ export PROMETHEUS_TOKEN=my-bearer-token
 ```
 
 ### Multi-tenant Support
-For Prometheus setups with tenant isolation (Cortex, Mimir, Thanos):
+Perfect for Cortex, Mimir, Thanos, and other multi-tenant setups:
 ```bash
 export PROMETHEUS_ORGID=tenant-123
 ```
 
 ## Error Handling
 
-The server provides detailed error messages for common issues:
+Comprehensive error handling with detailed messages:
 
-- Missing Prometheus URL (when not provided via environment variable or tool parameter)
-- Authentication failures
-- Network connectivity issues
-- Invalid PromQL queries
-- Prometheus API errors
+- **Missing configuration** guidance
+- **Authentication failure** details  
+- **Network connectivity** troubleshooting
+- **Invalid PromQL** query assistance
+- **Prometheus API error** explanations
+- **Dynamic client creation** error handling
 
 ## Contributing
 
