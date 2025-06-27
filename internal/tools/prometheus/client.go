@@ -253,4 +253,4 @@ func (c *Client) GetTargets() (*TargetsResult, error) {
 	}
 
 	return result, nil
-} 
+}

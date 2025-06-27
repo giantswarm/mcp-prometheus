@@ -23,10 +23,10 @@ func (l *TestLogger) Error(msg string, args ...interface{}) {}
 
 func TestRegisterPrometheusTools(t *testing.T) {
 	s := mcpserver.NewMCPServer("test", "1.0.0")
-	
+
 	// Create a mock server context
 	ctx := context.Background()
-	sc, err := server.NewServerContext(ctx, 
+	sc, err := server.NewServerContext(ctx,
 		server.WithPrometheusConfig(server.PrometheusConfig{
 			URL: "http://localhost:9090",
 		}),
@@ -60,7 +60,7 @@ func TestClient(t *testing.T) {
 			},
 		},
 		{
-			name:     "ExecuteRangeQuery", 
+			name:     "ExecuteRangeQuery",
 			endpoint: "/api/v1/query_range",
 			response: `{"status": "success", "data": {"resultType": "matrix", "result": []}}`,
 			testFunc: func(c *Client) error {
@@ -95,7 +95,7 @@ func TestClient(t *testing.T) {
 		},
 		{
 			name:     "GetTargets",
-			endpoint: "/api/v1/targets", 
+			endpoint: "/api/v1/targets",
 			response: `{"status": "success", "data": {"activeTargets": [], "droppedTargets": []}}`,
 			testFunc: func(c *Client) error {
 				_, err := c.GetTargets()
@@ -240,7 +240,7 @@ func TestHandleExecuteRangeQuery(t *testing.T) {
 			Name: "execute_range_query",
 			Arguments: map[string]interface{}{
 				"query": "up",
-				"start": "2023-01-01T00:00:00Z", 
+				"start": "2023-01-01T00:00:00Z",
 				"end":   "2023-01-01T01:00:00Z",
 				"step":  "1m",
 			},
@@ -313,4 +313,4 @@ func TestHandleGetMetricMetadata(t *testing.T) {
 	if result.IsError {
 		t.Errorf("Expected success, got error: %v", result.Content)
 	}
-} 
+}

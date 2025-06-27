@@ -16,4 +16,4 @@ func newVersionCmd() *cobra.Command {
 			fmt.Printf("mcp-prometheus %s\n", rootCmd.Version)
 		},
 	}
-} 
+}

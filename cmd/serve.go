@@ -297,4 +297,4 @@ func runStreamableHTTPServer(mcpSrv *mcpserver.MCPServer, addr, endpoint string,
 
 	fmt.Println("HTTP server gracefully stopped")
 	return nil
-} 
+}

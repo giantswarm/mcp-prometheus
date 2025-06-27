@@ -353,4 +353,4 @@ func handleGetTargets(ctx context.Context, request mcp.CallToolRequest, client *
 			},
 		},
 	}, nil
-} 
+}

@@ -36,4 +36,4 @@ func init() {
 	// Add subcommands
 	rootCmd.AddCommand(newServeCmd())
 	rootCmd.AddCommand(newVersionCmd())
-} 
+}

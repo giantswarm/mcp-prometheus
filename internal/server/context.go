@@ -154,4 +154,4 @@ type noopLogger struct{}
 func (l *noopLogger) Debug(msg string, args ...interface{}) {}
 func (l *noopLogger) Info(msg string, args ...interface{})  {}
 func (l *noopLogger) Warn(msg string, args ...interface{})  {}
-func (l *noopLogger) Error(msg string, args ...interface{}) {} 
+func (l *noopLogger) Error(msg string, args ...interface{}) {}

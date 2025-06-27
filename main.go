@@ -13,4 +13,4 @@ func main() {
 
 	// Execute the root command
 	cmd.Execute()
-} 
+}
