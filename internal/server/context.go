@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"sync"
 )
@@ -88,13 +87,8 @@ func NewServerContext(ctx context.Context, opts ...ServerOption) (*ServerContext
 			Username: os.Getenv("PROMETHEUS_USERNAME"),
 			Password: os.Getenv("PROMETHEUS_PASSWORD"),
 			Token:    os.Getenv("PROMETHEUS_TOKEN"),
-			OrgID:    os.Getenv("ORG_ID"),
+			OrgID:    os.Getenv("PROMETHEUS_ORGID"),
 		}
-	}
-
-	// Validate required configuration
-	if sc.prometheusConfig.URL == "" {
-		return nil, fmt.Errorf("PROMETHEUS_URL environment variable is required")
 	}
 
 	return sc, nil

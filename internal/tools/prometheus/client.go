@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/giantswarm/mcp-prometheus/internal/server"
@@ -109,6 +110,58 @@ func NewClient(config server.PrometheusConfig, logger server.Logger) *Client {
 		config: config,
 		logger: logger,
 	}
+}
+
+// NewClientFromParams creates a new Prometheus client from individual parameters
+// This function uses environment variables as defaults and validates the configuration
+func NewClientFromParams(prometheusURL, orgID string, baseConfig server.PrometheusConfig, logger server.Logger) (*Client, error) {
+	config, err := buildPrometheusConfig(baseConfig, prometheusURL, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	client := NewClient(config, logger)
+	if client.client == nil {
+		return nil, fmt.Errorf("failed to initialize Prometheus client")
+	}
+
+	return client, nil
+}
+
+// buildPrometheusConfig creates a PrometheusConfig based on tool parameters and environment variables
+// Environment variables take precedence and cannot be overridden
+func buildPrometheusConfig(baseConfig server.PrometheusConfig, prometheusURL, orgID string) (server.PrometheusConfig, error) {
+	config := server.PrometheusConfig{
+		Username: baseConfig.Username,
+		Password: baseConfig.Password,
+		Token:    baseConfig.Token,
+	}
+
+	// Handle Prometheus URL
+	envURL := os.Getenv("PROMETHEUS_URL")
+	if envURL != "" {
+		// Environment variable takes precedence
+		config.URL = envURL
+	} else if prometheusURL != "" {
+		// Use parameter if no environment variable is set
+		config.URL = prometheusURL
+	} else {
+		// Neither environment variable nor parameter provided
+		return config, fmt.Errorf("prometheus URL is required: either set PROMETHEUS_URL environment variable or provide prometheus_url parameter")
+	}
+
+	// Handle OrgID
+	envOrgID := os.Getenv("PROMETHEUS_ORGID")
+	if envOrgID != "" {
+		// Environment variable takes precedence
+		config.OrgID = envOrgID
+	} else if orgID != "" {
+		// Use parameter if no environment variable is set
+		config.OrgID = orgID
+	}
+	// If neither is set, OrgID remains empty (which is acceptable)
+
+	return config, nil
 }
 
 // QueryResult represents the result of an instant query

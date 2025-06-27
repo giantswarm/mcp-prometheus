@@ -59,11 +59,14 @@ Supports multiple transport types:
   - streamable-http: Streamable HTTP transport
 
 Environment Variables:
-  PROMETHEUS_URL      - Required: Prometheus server URL
+  PROMETHEUS_URL      - Optional: Prometheus server URL (takes precedence over tool parameters)
+  PROMETHEUS_ORGID    - Optional: Organization ID for multi-tenant setups (takes precedence over tool parameters)
   PROMETHEUS_USERNAME - Optional: Basic auth username
   PROMETHEUS_PASSWORD - Optional: Basic auth password
   PROMETHEUS_TOKEN    - Optional: Bearer token for authentication
-  ORG_ID              - Optional: Organization ID for multi-tenant setups`,
+
+If PROMETHEUS_URL or PROMETHEUS_ORGID environment variables are not set,
+they can be provided as parameters to individual tool calls.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runServe(transport, debugMode,
 				httpAddr, sseEndpoint, messageEndpoint, httpEndpoint)
