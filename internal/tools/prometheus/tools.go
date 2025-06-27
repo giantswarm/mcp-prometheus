@@ -3,10 +3,28 @@ package prometheus
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/giantswarm/mcp-prometheus/internal/server"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
+)
+
+// Constants for result truncation
+const (
+	MaxResultLength  = 50000
+	TruncationAdvice = `
+
+⚠️  RESULT TRUNCATED: The query returned a very large result (>50k characters).
+
+💡 To optimize your query and get less output, consider:
+   • Adding more specific label filters: {app="specific-app", namespace="specific-ns"}
+   • Using aggregation functions: sum(), avg(), count(), etc.
+   • Limiting time ranges for range queries
+   • Using topk() or bottomk() to get only top/bottom N results
+   • Filtering by specific metrics instead of using wildcards
+
+🔧 To get the full untruncated result, add "unlimited": "true" to your query parameters, but be aware this may impact performance.`
 )
 
 // RegisterPrometheusTools registers Prometheus-related tools with the MCP server
@@ -23,6 +41,9 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext) e
 		),
 		mcp.WithString("time",
 			mcp.Description("Optional RFC3339 or Unix timestamp (default: current time)"),
+		),
+		mcp.WithString("unlimited",
+			mcp.Description("Set to 'true' to get unlimited output (WARNING: may be very large and impact performance)"),
 		),
 	)
 
@@ -48,6 +69,9 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext) e
 		mcp.WithString("step",
 			mcp.Required(),
 			mcp.Description("Query resolution step width (e.g., '15s', '1m', '1h')"),
+		),
+		mcp.WithString("unlimited",
+			mcp.Description("Set to 'true' to get unlimited output (WARNING: may be very large and impact performance)"),
 		),
 	)
 
@@ -89,6 +113,27 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext) e
 	return nil
 }
 
+// formatQueryResult formats the query result with truncation and user guidance
+func formatQueryResult(resultType string, result interface{}, unlimited bool) string {
+	resultStr := fmt.Sprintf("Query executed successfully.\nResult Type: %s\nResult: %+v", resultType, result)
+
+	if unlimited {
+		warningMsg := "⚠️  WARNING: Unlimited output enabled - this response may be very large and could impact performance.\n\n"
+		return warningMsg + resultStr
+	}
+
+	if len(resultStr) > MaxResultLength {
+		truncated := resultStr[:MaxResultLength]
+		// Try to end at a complete line to avoid cutting off mid-metric
+		if lastNewline := strings.LastIndex(truncated, "\n"); lastNewline > MaxResultLength-1000 {
+			truncated = truncated[:lastNewline]
+		}
+		return truncated + TruncationAdvice
+	}
+
+	return resultStr
+}
+
 // handleExecuteQuery handles the execute_query tool
 func handleExecuteQuery(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
 	// Extract parameters
@@ -113,8 +158,10 @@ func handleExecuteQuery(ctx context.Context, request mcp.CallToolRequest, client
 	}
 
 	timeParam, _ := params["time"].(string)
+	unlimitedStr, _ := params["unlimited"].(string)
+	unlimited := unlimitedStr == "true"
 
-	sc.Logger().Debug("Executing PromQL query", "query", query, "time", timeParam)
+	sc.Logger().Debug("Executing PromQL query", "query", query, "time", timeParam, "unlimited", unlimited)
 
 	result, err := client.ExecuteQuery(query, timeParam)
 	if err != nil {
@@ -130,11 +177,13 @@ func handleExecuteQuery(ctx context.Context, request mcp.CallToolRequest, client
 		}, nil
 	}
 
+	formattedResult := formatQueryResult(result.ResultType, result.Result, unlimited)
+
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Query executed successfully.\nResult Type: %s\nResult: %+v", result.ResultType, result.Result),
+				Text: formattedResult,
 			},
 		},
 	}, nil
@@ -202,7 +251,10 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 		}, nil
 	}
 
-	sc.Logger().Debug("Executing PromQL range query", "query", query, "start", start, "end", end, "step", step)
+	unlimitedStr, _ := params["unlimited"].(string)
+	unlimited := unlimitedStr == "true"
+
+	sc.Logger().Debug("Executing PromQL range query", "query", query, "start", start, "end", end, "step", step, "unlimited", unlimited)
 
 	result, err := client.ExecuteRangeQuery(query, start, end, step)
 	if err != nil {
@@ -218,11 +270,13 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 		}, nil
 	}
 
+	formattedResult := formatQueryResult(result.ResultType, result.Result, unlimited)
+
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Range query executed successfully.\nResult Type: %s\nResult: %+v", result.ResultType, result.Result),
+				Text: formattedResult,
 			},
 		},
 	}, nil
