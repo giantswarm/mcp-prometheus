@@ -1,4 +1,4 @@
-# MCP Prometheus (Go Implementation)
+# MCP Prometheus
 
 A [Model Context Protocol][mcp] (MCP) server for Prometheus, written in Go.
 
@@ -41,10 +41,10 @@ go build -o mcp-prometheus
 
 ## Configuration
 
-Configure the MCP server through environment variables:
+Configure the MCP server through environment variables (all optional):
 
 ```bash
-# Required: Prometheus server configuration
+# Optional: Prometheus server configuration (takes precedence over tool parameters)
 export PROMETHEUS_URL=http://your-prometheus-server:9090
 
 # Optional: Authentication credentials (choose one)
@@ -55,9 +55,11 @@ export PROMETHEUS_PASSWORD=your_password
 # For bearer token auth  
 export PROMETHEUS_TOKEN=your_token
 
-# Optional: For multi-tenant setups like Cortex, Mimir or Thanos
-export ORG_ID=your_organization_id
+# Optional: For multi-tenant setups like Cortex, Mimir or Thanos (takes precedence over tool parameters)
+export PROMETHEUS_ORGID=your_organization_id
 ```
+
+**Note**: If `PROMETHEUS_URL` or `PROMETHEUS_ORGID` environment variables are not set, they can be provided as parameters to individual tool calls. Environment variables always take precedence over tool parameters when both are provided.
 
 ## Usage
 
@@ -99,11 +101,15 @@ Add the server configuration to your MCP client. For example, with Claude Deskto
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `execute_query` | Execute a PromQL instant query | `query` (required), `time` (optional) |
-| `execute_range_query` | Execute a PromQL range query | `query`, `start`, `end`, `step` (all required) |
-| `list_metrics` | List all available metrics | None |
-| `get_metric_metadata` | Get metadata for a specific metric | `metric` (required) |
-| `get_targets` | Get information about scrape targets | None |
+| `execute_query` | Execute a PromQL instant query | `query` (required), `prometheus_url` (optional), `orgid` (optional), `time` (optional), `unlimited` (optional) |
+| `execute_range_query` | Execute a PromQL range query | `query`, `start`, `end`, `step` (all required), `prometheus_url` (optional), `orgid` (optional), `unlimited` (optional) |
+| `list_metrics` | List all available metrics | `prometheus_url` (optional), `orgid` (optional) |
+| `get_metric_metadata` | Get metadata for a specific metric | `metric` (required), `prometheus_url` (optional), `orgid` (optional) |
+| `get_targets` | Get information about scrape targets | `prometheus_url` (optional), `orgid` (optional) |
+
+**Parameter Details:**
+- `prometheus_url`: Prometheus server URL (required if PROMETHEUS_URL environment variable is not set)
+- `orgid`: Organization ID for multi-tenant setups (optional, overridden by PROMETHEUS_ORGID environment variable if set)
 
 ### Example Tool Usage
 
@@ -111,6 +117,8 @@ Add the server configuration to your MCP client. For example, with Claude Deskto
 ```json
 {
   "query": "up",
+  "prometheus_url": "http://prometheus:9090",
+  "orgid": "tenant-123",
   "time": "2023-01-01T00:00:00Z"
 }
 ```
@@ -119,6 +127,7 @@ Add the server configuration to your MCP client. For example, with Claude Deskto
 ```json
 {
   "query": "rate(http_requests_total[5m])",
+  "prometheus_url": "http://prometheus:9090",
   "start": "2023-01-01T00:00:00Z",
   "end": "2023-01-01T01:00:00Z", 
   "step": "1m"
@@ -128,9 +137,12 @@ Add the server configuration to your MCP client. For example, with Claude Deskto
 #### Get metric metadata
 ```json
 {
-  "metric": "http_requests_total"
+  "metric": "http_requests_total",
+  "prometheus_url": "http://prometheus:9090"
 }
 ```
+
+**Note**: The `prometheus_url` and `orgid` parameters are optional if the corresponding environment variables are set.
 
 ## Transport Options
 
@@ -238,14 +250,14 @@ export PROMETHEUS_TOKEN=my-bearer-token
 ### Multi-tenant Support
 For Prometheus setups with tenant isolation (Cortex, Mimir, Thanos):
 ```bash
-export ORG_ID=tenant-123
+export PROMETHEUS_ORGID=tenant-123
 ```
 
 ## Error Handling
 
 The server provides detailed error messages for common issues:
 
-- Missing required configuration (PROMETHEUS_URL)
+- Missing Prometheus URL (when not provided via environment variable or tool parameter)
 - Authentication failures
 - Network connectivity issues
 - Invalid PromQL queries
