@@ -1,4 +1,4 @@
-# MCP Prometheus (Go Implementation)
+# MCP Prometheus
 
 A [Model Context Protocol][mcp] (MCP) server for Prometheus, written in Go.
 
