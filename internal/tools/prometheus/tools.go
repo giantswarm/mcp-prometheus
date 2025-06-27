@@ -12,7 +12,7 @@ import (
 
 // Constants for result truncation
 const (
-	MaxResultLength  = 50000
+	MaxResultLength = 50000
 	TruncationAdvice = `
 
 ⚠️  RESULT TRUNCATED: The query returned a very large result (>50k characters).
@@ -143,12 +143,12 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext) e
 // formatQueryResult formats the query result with truncation and user guidance
 func formatQueryResult(resultType string, result interface{}, unlimited bool) string {
 	resultStr := fmt.Sprintf("Query executed successfully.\nResult Type: %s\nResult: %+v", resultType, result)
-
+	
 	if unlimited {
 		warningMsg := "⚠️  WARNING: Unlimited output enabled - this response may be very large and could impact performance.\n\n"
 		return warningMsg + resultStr
 	}
-
+	
 	if len(resultStr) > MaxResultLength {
 		truncated := resultStr[:MaxResultLength]
 		// Try to end at a complete line to avoid cutting off mid-metric
@@ -157,7 +157,7 @@ func formatQueryResult(resultType string, result interface{}, unlimited bool) st
 		}
 		return truncated + TruncationAdvice
 	}
-
+	
 	return resultStr
 }
 
