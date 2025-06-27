@@ -149,9 +149,12 @@ func TestHandleExecuteQuery(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	// Create server context
+	// Create client and server context
 	ctx := context.Background()
 	sc, err := server.NewServerContext(ctx,
+		server.WithPrometheusConfig(server.PrometheusConfig{
+			URL: mockServer.URL,
+		}),
 		server.WithLogger(&TestLogger{}),
 	)
 	if err != nil {
@@ -159,18 +162,19 @@ func TestHandleExecuteQuery(t *testing.T) {
 	}
 	defer sc.Shutdown()
 
+	client := NewClient(sc.PrometheusConfig(), sc.Logger())
+
 	// Test valid request
 	request := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "execute_query",
 			Arguments: map[string]interface{}{
-				"query":          "up",
-				"prometheus_url": mockServer.URL,
+				"query": "up",
 			},
 		},
 	}
 
-	result, err := handleExecuteQuery(context.Background(), request, sc)
+	result, err := handleExecuteQuery(context.Background(), request, client, sc)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -182,14 +186,12 @@ func TestHandleExecuteQuery(t *testing.T) {
 	// Test missing query parameter
 	requestBad := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
-			Name: "execute_query",
-			Arguments: map[string]interface{}{
-				"prometheus_url": mockServer.URL,
-			},
+			Name:      "execute_query",
+			Arguments: map[string]interface{}{},
 		},
 	}
 
-	result, err = handleExecuteQuery(context.Background(), requestBad, sc)
+	result, err = handleExecuteQuery(context.Background(), requestBad, client, sc)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -217,9 +219,12 @@ func TestHandleExecuteRangeQuery(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	// Create server context
+	// Create client and server context
 	ctx := context.Background()
 	sc, err := server.NewServerContext(ctx,
+		server.WithPrometheusConfig(server.PrometheusConfig{
+			URL: mockServer.URL,
+		}),
 		server.WithLogger(&TestLogger{}),
 	)
 	if err != nil {
@@ -227,21 +232,22 @@ func TestHandleExecuteRangeQuery(t *testing.T) {
 	}
 	defer sc.Shutdown()
 
+	client := NewClient(sc.PrometheusConfig(), sc.Logger())
+
 	// Test valid request
 	request := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "execute_range_query",
 			Arguments: map[string]interface{}{
-				"query":          "up",
-				"prometheus_url": mockServer.URL,
-				"start":          "2023-01-01T00:00:00Z",
-				"end":            "2023-01-01T01:00:00Z",
-				"step":           "1m",
+				"query": "up",
+				"start": "2023-01-01T00:00:00Z",
+				"end":   "2023-01-01T01:00:00Z",
+				"step":  "1m",
 			},
 		},
 	}
 
-	result, err := handleExecuteRangeQuery(context.Background(), request, sc)
+	result, err := handleExecuteRangeQuery(context.Background(), request, client, sc)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -274,9 +280,12 @@ func TestHandleGetMetricMetadata(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	// Create server context
+	// Create client and server context
 	ctx := context.Background()
 	sc, err := server.NewServerContext(ctx,
+		server.WithPrometheusConfig(server.PrometheusConfig{
+			URL: mockServer.URL,
+		}),
 		server.WithLogger(&TestLogger{}),
 	)
 	if err != nil {
@@ -284,18 +293,19 @@ func TestHandleGetMetricMetadata(t *testing.T) {
 	}
 	defer sc.Shutdown()
 
+	client := NewClient(sc.PrometheusConfig(), sc.Logger())
+
 	// Test valid request
 	request := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "get_metric_metadata",
 			Arguments: map[string]interface{}{
-				"metric":         "http_requests_total",
-				"prometheus_url": mockServer.URL,
+				"metric": "http_requests_total",
 			},
 		},
 	}
 
-	result, err := handleGetMetricMetadata(context.Background(), request, sc)
+	result, err := handleGetMetricMetadata(context.Background(), request, client, sc)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
