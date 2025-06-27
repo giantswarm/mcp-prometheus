@@ -58,6 +58,18 @@ type Client struct {
 
 // NewClient creates a new Prometheus client using the official client library
 func NewClient(config server.PrometheusConfig, logger server.Logger) *Client {
+	logger.Debug("Creating new Prometheus client", "url", config.URL, "orgID", config.OrgID)
+
+	// Validate URL
+	if config.URL == "" {
+		logger.Error("Prometheus URL is empty")
+		return &Client{
+			client: nil,
+			config: config,
+			logger: logger,
+		}
+	}
+
 	// Start with default transport
 	roundTripper := http.DefaultTransport
 
@@ -90,13 +102,15 @@ func NewClient(config server.PrometheusConfig, logger server.Logger) *Client {
 		logger.Debug("Using organization ID", "orgID", config.OrgID)
 	}
 
+	logger.Debug("Creating Prometheus API client", "address", config.URL)
+
 	// Create the official Prometheus client
 	promClient, err := api.NewClient(api.Config{
 		Address:      config.URL,
 		RoundTripper: roundTripper,
 	})
 	if err != nil {
-		logger.Error("Failed to create Prometheus client", "error", err)
+		logger.Error("Failed to create Prometheus client", "error", err, "url", config.URL)
 		// Return a client that will fail on use rather than panicking here
 		return &Client{
 			client: nil,
@@ -104,6 +118,8 @@ func NewClient(config server.PrometheusConfig, logger server.Logger) *Client {
 			logger: logger,
 		}
 	}
+
+	logger.Debug("Successfully created Prometheus client", "address", config.URL)
 
 	return &Client{
 		client: v1.NewAPI(promClient),

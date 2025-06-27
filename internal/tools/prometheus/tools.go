@@ -27,308 +27,182 @@ const (
 🔧 To get the full untruncated result, add "unlimited": "true" to your query parameters, but be aware this may impact performance.`
 )
 
+// Common parameter builders to reduce repetition
+func withPrometheusConnectionParams(options ...mcp.ToolOption) []mcp.ToolOption {
+	connectionParams := []mcp.ToolOption{
+		mcp.WithString("prometheus_url",
+			mcp.Description("Prometheus server URL (e.g., 'http://localhost:8080/prometheus')"),
+		),
+		mcp.WithString("org_id",
+			mcp.Description("Organization ID for multi-tenant Prometheus"),
+		),
+	}
+	return append(connectionParams, options...)
+}
+
+func withQueryEnhancementParams(options ...mcp.ToolOption) []mcp.ToolOption {
+	enhancementParams := []mcp.ToolOption{
+		mcp.WithString("timeout",
+			mcp.Description("Query timeout (e.g., '30s', '1m', '5m')"),
+		),
+		mcp.WithString("limit",
+			mcp.Description("Maximum number of returned entries"),
+		),
+		mcp.WithString("stats",
+			mcp.Description("Include query statistics: 'all'"),
+		),
+		mcp.WithString("lookback_delta",
+			mcp.Description("Query lookback delta (e.g., '5m')"),
+		),
+		mcp.WithString("unlimited",
+			mcp.Description("Set to 'true' to get unlimited output (WARNING: may be very large and impact performance)"),
+		),
+	}
+	return append(enhancementParams, options...)
+}
+
+func withTimeFilteringParams(options ...mcp.ToolOption) []mcp.ToolOption {
+	timeParams := []mcp.ToolOption{
+		mcp.WithString("start_time",
+			mcp.Description("Start time for filtering (RFC3339)"),
+		),
+		mcp.WithString("end_time",
+			mcp.Description("End time for filtering (RFC3339)"),
+		),
+	}
+	return append(timeParams, options...)
+}
+
+func withLabelMatchingParams(options ...mcp.ToolOption) []mcp.ToolOption {
+	matchParams := []mcp.ToolOption{
+		mcp.WithArray("matches",
+			mcp.Description("Array of label matchers to filter series"),
+		),
+	}
+	return append(matchParams, options...)
+}
+
+// Handler wrapper type for cleaner function signatures
+type PrometheusHandler func(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error)
+
+// Wrapper that handles dynamic client creation and error handling
+func withDynamicPrometheusClient(handler PrometheusHandler, client *Client, sc *server.ServerContext) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		params := extractParams(request)
+
+		// Create client with dynamic parameters if provided
+		dynamicClient, err := createClientFromParams(params, client, sc)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					mcp.TextContent{
+						Type: "text",
+						Text: fmt.Sprintf("Error creating Prometheus client: %v", err),
+					},
+				},
+			}, nil
+		}
+
+		// Call the actual handler with the dynamic client
+		return handler(ctx, request, dynamicClient, sc)
+	}
+}
+
+// Helper function to create and register a tool with common patterns
+func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.ServerContext, toolName string, description string, handler PrometheusHandler, options ...mcp.ToolOption) {
+	// Always include prometheus connection parameters
+	allOptions := withPrometheusConnectionParams(options...)
+	
+	tool := mcp.NewTool(toolName, append([]mcp.ToolOption{mcp.WithDescription(description)}, allOptions...)...)
+	s.AddTool(tool, withDynamicPrometheusClient(handler, client, sc))
+}
+
 // RegisterPrometheusTools registers Prometheus-related tools with the MCP server
 func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext) error {
 	// Create Prometheus client
 	client := NewClient(sc.PrometheusConfig(), sc.Logger())
 
-	// execute_query tool - enhanced with new parameters
-	executeQueryTool := mcp.NewTool("execute_query",
-		mcp.WithDescription("Execute a PromQL instant query against Prometheus"),
-		mcp.WithString("query",
-			mcp.Required(),
-			mcp.Description("PromQL query string"),
-		),
-		mcp.WithString("time",
-			mcp.Description("Optional RFC3339 or Unix timestamp (default: current time)"),
-		),
-		mcp.WithString("timeout",
-			mcp.Description("Query timeout (e.g., '30s', '1m', '5m')"),
-		),
-		mcp.WithString("limit",
-			mcp.Description("Maximum number of returned entries"),
-		),
-		mcp.WithString("stats",
-			mcp.Description("Include query statistics: 'all'"),
-		),
-		mcp.WithString("lookback_delta",
-			mcp.Description("Query lookback delta (e.g., '5m')"),
-		),
-		mcp.WithString("unlimited",
-			mcp.Description("Set to 'true' to get unlimited output (WARNING: may be very large and impact performance)"),
-		),
+	// Query execution tools
+	registerPrometheusTools(s, client, sc, "execute_query", "Execute a PromQL instant query against Prometheus",
+		handleExecuteQuery, withQueryEnhancementParams(
+			mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string")),
+			mcp.WithString("time", mcp.Description("Optional RFC3339 or Unix timestamp (default: current time)")),
+		)...)
+
+	registerPrometheusTools(s, client, sc, "execute_range_query", "Execute a PromQL range query with start time, end time, and step interval",
+		handleExecuteRangeQuery, withQueryEnhancementParams(
+			mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string")),
+			mcp.WithString("start", mcp.Required(), mcp.Description("Start time as RFC3339 or Unix timestamp")),
+			mcp.WithString("end", mcp.Required(), mcp.Description("End time as RFC3339 or Unix timestamp")),
+			mcp.WithString("step", mcp.Required(), mcp.Description("Query resolution step width (e.g., '15s', '1m', '1h')")),
+		)...)
+
+	// Metrics discovery tools
+	registerPrometheusTools(s, client, sc, "list_metrics", "List all available metrics in Prometheus",
+		handleListMetrics, withTimeFilteringParams(withLabelMatchingParams()...)...)
+
+	registerPrometheusTools(s, client, sc, "get_metric_metadata", "Get metadata for a specific metric",
+		handleGetMetricMetadata,
+		mcp.WithString("metric", mcp.Required(), mcp.Description("The name of the metric to retrieve metadata for")),
+		mcp.WithString("limit", mcp.Description("Maximum number of metadata entries to return")),
 	)
 
-	s.AddTool(executeQueryTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleExecuteQuery(ctx, request, client, sc)
-	})
+	// Label and series discovery tools
+	registerPrometheusTools(s, client, sc, "list_label_names", "Get all available label names",
+		handleListLabelNames, withTimeFilteringParams(withLabelMatchingParams(
+			mcp.WithString("limit", mcp.Description("Maximum number of label names to return")),
+		)...)...)
 
-	// execute_range_query tool - enhanced with new parameters
-	executeRangeQueryTool := mcp.NewTool("execute_range_query",
-		mcp.WithDescription("Execute a PromQL range query with start time, end time, and step interval"),
-		mcp.WithString("query",
-			mcp.Required(),
-			mcp.Description("PromQL query string"),
-		),
-		mcp.WithString("start",
-			mcp.Required(),
-			mcp.Description("Start time as RFC3339 or Unix timestamp"),
-		),
-		mcp.WithString("end",
-			mcp.Required(),
-			mcp.Description("End time as RFC3339 or Unix timestamp"),
-		),
-		mcp.WithString("step",
-			mcp.Required(),
-			mcp.Description("Query resolution step width (e.g., '15s', '1m', '1h')"),
-		),
-		mcp.WithString("timeout",
-			mcp.Description("Query timeout (e.g., '30s', '1m', '5m')"),
-		),
-		mcp.WithString("limit",
-			mcp.Description("Maximum number of returned entries"),
-		),
-		mcp.WithString("stats",
-			mcp.Description("Include query statistics: 'all'"),
-		),
-		mcp.WithString("lookback_delta",
-			mcp.Description("Query lookback delta (e.g., '5m')"),
-		),
-		mcp.WithString("unlimited",
-			mcp.Description("Set to 'true' to get unlimited output (WARNING: may be very large and impact performance)"),
-		),
+	registerPrometheusTools(s, client, sc, "list_label_values", "Get values for a specific label",
+		handleListLabelValues, withTimeFilteringParams(withLabelMatchingParams(
+			mcp.WithString("label", mcp.Required(), mcp.Description("The label name to get values for")),
+			mcp.WithString("limit", mcp.Description("Maximum number of label values to return")),
+		)...)...)
+
+	registerPrometheusTools(s, client, sc, "find_series", "Find series by label matchers",
+		handleFindSeries, withTimeFilteringParams(
+			mcp.WithArray("matches", mcp.Required(), mcp.Description("Array of label matchers (e.g., ['{job=\"prometheus\"}', '{__name__=~\"http_.*\"}'])")),
+			mcp.WithString("limit", mcp.Description("Maximum number of series to return")),
+		)...)
+
+	// Target and system information tools
+	registerPrometheusTools(s, client, sc, "get_targets", "Get information about all scrape targets", handleGetTargets)
+
+	registerPrometheusTools(s, client, sc, "get_build_info", "Get build information about the Prometheus server", handleGetBuildInfo)
+
+	registerPrometheusTools(s, client, sc, "get_runtime_info", "Get runtime information about the Prometheus server", handleGetRuntimeInfo)
+
+	registerPrometheusTools(s, client, sc, "get_flags", "Get runtime flags that Prometheus was launched with", handleGetFlags)
+
+	registerPrometheusTools(s, client, sc, "get_config", "Get Prometheus configuration", handleGetConfig)
+
+	// Alerting tools
+	registerPrometheusTools(s, client, sc, "get_alerts", "Get active alerts", handleGetAlerts)
+
+	registerPrometheusTools(s, client, sc, "get_alertmanagers", "Get AlertManager discovery information", handleGetAlertManagers)
+
+	registerPrometheusTools(s, client, sc, "get_rules", "Get recording and alerting rules", handleGetRules)
+
+	// Advanced tools
+	registerPrometheusTools(s, client, sc, "get_tsdb_stats", "Get TSDB cardinality statistics",
+		handleGetTSDBStats,
+		mcp.WithString("limit", mcp.Description("Maximum number of stats entries to return")),
 	)
 
-	s.AddTool(executeRangeQueryTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleExecuteRangeQuery(ctx, request, client, sc)
-	})
-
-	// list_metrics tool - enhanced with filtering parameters
-	listMetricsTool := mcp.NewTool("list_metrics",
-		mcp.WithDescription("List all available metrics in Prometheus"),
-		mcp.WithString("start_time",
-			mcp.Description("Start time for filtering metrics (RFC3339)"),
-		),
-		mcp.WithString("end_time",
-			mcp.Description("End time for filtering metrics (RFC3339)"),
-		),
-		mcp.WithArray("matches",
-			mcp.Description("Array of label matchers to filter metrics (e.g., ['{job=\"prometheus\"}', '{instance=~\".*:9090\"}'])"),
-		),
+	registerPrometheusTools(s, client, sc, "query_exemplars", "Query exemplars for traces",
+		handleQueryExemplars,
+		mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string to find exemplars for")),
+		mcp.WithString("start", mcp.Required(), mcp.Description("Start time as RFC3339 or Unix timestamp")),
+		mcp.WithString("end", mcp.Required(), mcp.Description("End time as RFC3339 or Unix timestamp")),
 	)
 
-	s.AddTool(listMetricsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleListMetrics(ctx, request, client, sc)
-	})
-
-	// get_metric_metadata tool - enhanced with limit parameter
-	getMetricMetadataTool := mcp.NewTool("get_metric_metadata",
-		mcp.WithDescription("Get metadata for a specific metric"),
-		mcp.WithString("metric",
-			mcp.Required(),
-			mcp.Description("The name of the metric to retrieve metadata for"),
-		),
-		mcp.WithString("limit",
-			mcp.Description("Maximum number of metadata entries to return"),
-		),
+	registerPrometheusTools(s, client, sc, "get_targets_metadata", "Get metadata about metrics from specific targets",
+		handleGetTargetsMetadata,
+		mcp.WithString("match_target", mcp.Description("Target matcher to filter targets")),
+		mcp.WithString("metric", mcp.Description("Metric name to filter metadata for")),
+		mcp.WithString("limit", mcp.Description("Maximum number of metadata entries to return")),
 	)
-
-	s.AddTool(getMetricMetadataTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleGetMetricMetadata(ctx, request, client, sc)
-	})
-
-	// get_targets tool (existing)
-	getTargetsTool := mcp.NewTool("get_targets",
-		mcp.WithDescription("Get information about all scrape targets"),
-	)
-
-	s.AddTool(getTargetsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleGetTargets(ctx, request, client, sc)
-	})
-
-	// NEW TOOLS START HERE
-
-	// list_label_names tool
-	listLabelNamesTool := mcp.NewTool("list_label_names",
-		mcp.WithDescription("Get all available label names"),
-		mcp.WithString("start_time",
-			mcp.Description("Start time for filtering (RFC3339)"),
-		),
-		mcp.WithString("end_time",
-			mcp.Description("End time for filtering (RFC3339)"),
-		),
-		mcp.WithArray("matches",
-			mcp.Description("Array of label matchers to filter series"),
-		),
-		mcp.WithString("limit",
-			mcp.Description("Maximum number of label names to return"),
-		),
-	)
-
-	s.AddTool(listLabelNamesTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleListLabelNames(ctx, request, client, sc)
-	})
-
-	// list_label_values tool
-	listLabelValuesTool := mcp.NewTool("list_label_values",
-		mcp.WithDescription("Get values for a specific label"),
-		mcp.WithString("label",
-			mcp.Required(),
-			mcp.Description("The label name to get values for"),
-		),
-		mcp.WithString("start_time",
-			mcp.Description("Start time for filtering (RFC3339)"),
-		),
-		mcp.WithString("end_time",
-			mcp.Description("End time for filtering (RFC3339)"),
-		),
-		mcp.WithArray("matches",
-			mcp.Description("Array of label matchers to filter series"),
-		),
-		mcp.WithString("limit",
-			mcp.Description("Maximum number of label values to return"),
-		),
-	)
-
-	s.AddTool(listLabelValuesTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleListLabelValues(ctx, request, client, sc)
-	})
-
-	// find_series tool
-	findSeriesTool := mcp.NewTool("find_series",
-		mcp.WithDescription("Find series by label matchers"),
-		mcp.WithArray("matches",
-			mcp.Required(),
-			mcp.Description("Array of label matchers (e.g., ['{job=\"prometheus\"}', '{__name__=~\"http_.*\"}'])"),
-		),
-		mcp.WithString("start_time",
-			mcp.Description("Start time for filtering (RFC3339)"),
-		),
-		mcp.WithString("end_time",
-			mcp.Description("End time for filtering (RFC3339)"),
-		),
-		mcp.WithString("limit",
-			mcp.Description("Maximum number of series to return"),
-		),
-	)
-
-	s.AddTool(findSeriesTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleFindSeries(ctx, request, client, sc)
-	})
-
-	// get_rules tool
-	getRulesTool := mcp.NewTool("get_rules",
-		mcp.WithDescription("Get recording and alerting rules"),
-	)
-
-	s.AddTool(getRulesTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleGetRules(ctx, request, client, sc)
-	})
-
-	// get_alerts tool
-	getAlertsTool := mcp.NewTool("get_alerts",
-		mcp.WithDescription("Get active alerts"),
-	)
-
-	s.AddTool(getAlertsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleGetAlerts(ctx, request, client, sc)
-	})
-
-	// get_alertmanagers tool
-	getAlertManagersTool := mcp.NewTool("get_alertmanagers",
-		mcp.WithDescription("Get AlertManager discovery information"),
-	)
-
-	s.AddTool(getAlertManagersTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleGetAlertManagers(ctx, request, client, sc)
-	})
-
-	// get_config tool
-	getConfigTool := mcp.NewTool("get_config",
-		mcp.WithDescription("Get Prometheus configuration"),
-	)
-
-	s.AddTool(getConfigTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleGetConfig(ctx, request, client, sc)
-	})
-
-	// get_flags tool
-	getFlagsTool := mcp.NewTool("get_flags",
-		mcp.WithDescription("Get runtime flags that Prometheus was launched with"),
-	)
-
-	s.AddTool(getFlagsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleGetFlags(ctx, request, client, sc)
-	})
-
-	// get_build_info tool
-	getBuildInfoTool := mcp.NewTool("get_build_info",
-		mcp.WithDescription("Get build information about the Prometheus server"),
-	)
-
-	s.AddTool(getBuildInfoTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleGetBuildInfo(ctx, request, client, sc)
-	})
-
-	// get_runtime_info tool
-	getRuntimeInfoTool := mcp.NewTool("get_runtime_info",
-		mcp.WithDescription("Get runtime information about the Prometheus server"),
-	)
-
-	s.AddTool(getRuntimeInfoTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleGetRuntimeInfo(ctx, request, client, sc)
-	})
-
-	// get_tsdb_stats tool
-	getTSDBStatsTool := mcp.NewTool("get_tsdb_stats",
-		mcp.WithDescription("Get TSDB cardinality statistics"),
-		mcp.WithString("limit",
-			mcp.Description("Maximum number of stats entries to return"),
-		),
-	)
-
-	s.AddTool(getTSDBStatsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleGetTSDBStats(ctx, request, client, sc)
-	})
-
-	// query_exemplars tool
-	queryExemplarsTool := mcp.NewTool("query_exemplars",
-		mcp.WithDescription("Query exemplars for traces"),
-		mcp.WithString("query",
-			mcp.Required(),
-			mcp.Description("PromQL query string to find exemplars for"),
-		),
-		mcp.WithString("start",
-			mcp.Required(),
-			mcp.Description("Start time as RFC3339 or Unix timestamp"),
-		),
-		mcp.WithString("end",
-			mcp.Required(),
-			mcp.Description("End time as RFC3339 or Unix timestamp"),
-		),
-	)
-
-	s.AddTool(queryExemplarsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleQueryExemplars(ctx, request, client, sc)
-	})
-
-	// get_targets_metadata tool
-	getTargetsMetadataTool := mcp.NewTool("get_targets_metadata",
-		mcp.WithDescription("Get metadata about metrics from specific targets"),
-		mcp.WithString("match_target",
-			mcp.Description("Target matcher to filter targets"),
-		),
-		mcp.WithString("metric",
-			mcp.Description("Metric name to filter metadata for"),
-		),
-		mcp.WithString("limit",
-			mcp.Description("Maximum number of metadata entries to return"),
-		),
-	)
-
-	s.AddTool(getTargetsMetadataTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleGetTargetsMetadata(ctx, request, client, sc)
-	})
 
 	return nil
 }
@@ -379,6 +253,52 @@ func extractStringArray(params map[string]interface{}, key string) []string {
 		}
 	}
 	return nil
+}
+
+// Helper function to create a client with dynamic parameters
+func createClientFromParams(params map[string]interface{}, defaultClient *Client, sc *server.ServerContext) (*Client, error) {
+	prometheusURL, hasURL := params["prometheus_url"].(string)
+	orgID, hasOrgID := params["org_id"].(string)
+
+	// If neither parameter is provided, check if default client is valid
+	if !hasURL && !hasOrgID {
+		if defaultClient != nil && defaultClient.client != nil {
+			return defaultClient, nil
+		}
+		// If default client is not available, require dynamic parameters
+		return nil, fmt.Errorf("prometheus_url parameter is required (no default Prometheus configuration available)")
+	}
+
+	// Always create a new client when dynamic parameters are provided
+	// Start with empty config to avoid inheriting potentially empty defaults
+	config := server.PrometheusConfig{}
+	
+	// Set URL if provided
+	if hasURL && prometheusURL != "" {
+		config.URL = prometheusURL
+		sc.Logger().Debug("Setting Prometheus URL from parameter", "url", prometheusURL)
+	}
+	
+	// Set OrgID if provided
+	if hasOrgID && orgID != "" {
+		config.OrgID = orgID
+		sc.Logger().Debug("Setting Prometheus OrgID from parameter", "orgID", orgID)
+	}
+
+	// Validate that we have a URL when creating a new client
+	if config.URL == "" {
+		return nil, fmt.Errorf("prometheus_url parameter is required when using dynamic client configuration")
+	}
+
+	sc.Logger().Debug("Creating dynamic client with config", "url", config.URL, "orgID", config.OrgID)
+
+	// Create and return new client
+	client := NewClient(config, sc.Logger())
+	if client.client == nil {
+		return nil, fmt.Errorf("failed to initialize Prometheus client with URL: %s, OrgID: %s", config.URL, config.OrgID)
+	}
+
+	return client, nil
 }
 
 // handleExecuteQuery handles the execute_query tool with enhanced parameters
@@ -501,7 +421,6 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 			},
 		}, nil
 	}
-
 	unlimitedStr, _ := params["unlimited"].(string)
 	unlimited := unlimitedStr == "true"
 
@@ -552,7 +471,6 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 // handleListMetrics handles the list_metrics tool with enhanced filtering
 func handleListMetrics(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
 	params := extractParams(request)
-
 	options := ListMetricsOptions{
 		StartTime: getStringParam(params, "start_time"),
 		EndTime:   getStringParam(params, "end_time"),
@@ -616,7 +534,6 @@ func handleGetMetricMetadata(ctx context.Context, request mcp.CallToolRequest, c
 			},
 		}, nil
 	}
-
 	options := MetricMetadataOptions{
 		Limit: getStringParam(params, "limit"),
 	}
@@ -687,7 +604,6 @@ func handleGetTargets(ctx context.Context, request mcp.CallToolRequest, client *
 // handleListLabelNames handles the list_label_names tool
 func handleListLabelNames(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
 	params := extractParams(request)
-
 	options := LabelOptions{
 		StartTime: getStringParam(params, "start_time"),
 		EndTime:   getStringParam(params, "end_time"),
@@ -751,7 +667,6 @@ func handleListLabelValues(ctx context.Context, request mcp.CallToolRequest, cli
 			},
 		}, nil
 	}
-
 	options := LabelOptions{
 		StartTime: getStringParam(params, "start_time"),
 		EndTime:   getStringParam(params, "end_time"),
@@ -820,7 +735,6 @@ func handleFindSeries(ctx context.Context, request mcp.CallToolRequest, client *
 			},
 		}, nil
 	}
-
 	options := SeriesOptions{
 		StartTime: getStringParam(params, "start_time"),
 		EndTime:   getStringParam(params, "end_time"),
@@ -1075,7 +989,6 @@ func handleGetTSDBStats(ctx context.Context, request mcp.CallToolRequest, client
 	options := TSDBOptions{
 		Limit: getStringParam(params, "limit"),
 	}
-
 	sc.Logger().Debug("Getting TSDB stats", "options", options)
 
 	tsdbStats, err := client.GetTSDBStats(options)
@@ -1144,7 +1057,6 @@ func handleQueryExemplars(ctx context.Context, request mcp.CallToolRequest, clie
 			},
 		}, nil
 	}
-
 	sc.Logger().Debug("Querying exemplars", "query", query, "start", start, "end", end)
 
 	exemplars, err := client.QueryExemplars(query, start, end)
@@ -1178,7 +1090,6 @@ func handleGetTargetsMetadata(ctx context.Context, request mcp.CallToolRequest, 
 	matchTarget := getStringParam(params, "match_target")
 	metric := getStringParam(params, "metric")
 	limit := getStringParam(params, "limit")
-
 	sc.Logger().Debug("Getting targets metadata", "match_target", matchTarget, "metric", metric, "limit", limit)
 
 	targetsMetadata, err := client.GetTargetsMetadata(matchTarget, metric, limit)
