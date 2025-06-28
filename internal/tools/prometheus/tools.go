@@ -260,37 +260,36 @@ func createClientFromParams(params map[string]interface{}, defaultClient *Client
 	prometheusURL, hasURL := params["prometheus_url"].(string)
 	orgID, hasOrgID := params["org_id"].(string)
 
-	// If neither parameter is provided, check if default client is valid
+	// If neither parameter is provided, use default client
 	if !hasURL && !hasOrgID {
 		if defaultClient != nil && defaultClient.client != nil {
 			return defaultClient, nil
 		}
-		// If default client is not available, require dynamic parameters
 		return nil, fmt.Errorf("prometheus_url parameter is required (no default Prometheus configuration available)")
 	}
 
-	// Always create a new client when dynamic parameters are provided
-	// Start with empty config to avoid inheriting potentially empty defaults
-	config := server.PrometheusConfig{}
+	// Start with environment config to inherit authentication
+	config := sc.PrometheusConfig()
 	
-	// Set URL if provided
+	// Override URL if provided
 	if hasURL && prometheusURL != "" {
 		config.URL = prometheusURL
-		sc.Logger().Debug("Setting Prometheus URL from parameter", "url", prometheusURL)
+		sc.Logger().Debug("Overriding Prometheus URL from parameter", "url", prometheusURL)
 	}
 	
-	// Set OrgID if provided
+	// Override OrgID if provided
 	if hasOrgID && orgID != "" {
 		config.OrgID = orgID
-		sc.Logger().Debug("Setting Prometheus OrgID from parameter", "orgID", orgID)
+		sc.Logger().Debug("Overriding Prometheus OrgID from parameter", "orgID", orgID)
 	}
 
-	// Validate that we have a URL when creating a new client
+	// Validate that we have a URL
 	if config.URL == "" {
 		return nil, fmt.Errorf("prometheus_url parameter is required when using dynamic client configuration")
 	}
 
-	sc.Logger().Debug("Creating dynamic client with config", "url", config.URL, "orgID", config.OrgID)
+	sc.Logger().Debug("Creating dynamic client with inherited config", 
+		"url", config.URL, "orgID", config.OrgID, "hasAuth", config.Username != "" || config.Token != "")
 
 	// Create and return new client
 	client := NewClient(config, sc.Logger())
