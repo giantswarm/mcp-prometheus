@@ -3,7 +3,7 @@ module github.com/giantswarm/mcp-prometheus
 go 1.24.4
 
 require (
-	github.com/mark3labs/mcp-go v0.32.0
+	github.com/mark3labs/mcp-go v0.33.0
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/common v0.65.0
 	github.com/spf13/cobra v1.9.1
