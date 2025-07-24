@@ -48,4 +48,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ConfigMap and Secret integration for configuration
 - Resource limits and requests properly configured
 
-[Unreleased]: https://github.com/giantswarm/mcp-kubernetes/compare/v0.0.19...HEAD
+[Unreleased]: https://github.com/giantswarm/mcp-prometheus/compare/v0.0.0...HEAD
