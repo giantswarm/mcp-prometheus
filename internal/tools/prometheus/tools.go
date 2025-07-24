@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/giantswarm/mcp-prometheus/internal/server"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
+
+	"github.com/giantswarm/mcp-prometheus/internal/server"
 )
 
 // Constants for result truncation
@@ -113,7 +114,7 @@ func withDynamicPrometheusClient(handler PrometheusHandler, client *Client, sc *
 func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.ServerContext, toolName string, description string, handler PrometheusHandler, options ...mcp.ToolOption) {
 	// Always include prometheus connection parameters
 	allOptions := withPrometheusConnectionParams(options...)
-	
+
 	tool := mcp.NewTool(toolName, append([]mcp.ToolOption{mcp.WithDescription(description)}, allOptions...)...)
 	s.AddTool(tool, withDynamicPrometheusClient(handler, client, sc))
 }
@@ -270,13 +271,13 @@ func createClientFromParams(params map[string]interface{}, defaultClient *Client
 
 	// Start with environment config to inherit authentication
 	config := sc.PrometheusConfig()
-	
+
 	// Override URL if provided
 	if hasURL && prometheusURL != "" {
 		config.URL = prometheusURL
 		sc.Logger().Debug("Overriding Prometheus URL from parameter", "url", prometheusURL)
 	}
-	
+
 	// Override OrgID if provided
 	if hasOrgID && orgID != "" {
 		config.OrgID = orgID
@@ -288,7 +289,7 @@ func createClientFromParams(params map[string]interface{}, defaultClient *Client
 		return nil, fmt.Errorf("prometheus_url parameter is required when using dynamic client configuration")
 	}
 
-	sc.Logger().Debug("Creating dynamic client with inherited config", 
+	sc.Logger().Debug("Creating dynamic client with inherited config",
 		"url", config.URL, "orgID", config.OrgID, "hasAuth", config.Username != "" || config.Token != "")
 
 	// Create and return new client

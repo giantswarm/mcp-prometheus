@@ -1,0 +1,53 @@
+version: 2.1
+orbs:
+  architect: giantswarm/architect@6.2.1
+
+workflows:
+  build:
+    jobs:
+    - architect/go-build:
+        name: go-build
+        binary: mcp-prometheus
+        filters:
+            # Trigger the job also on git tag.
+          tags:
+            only: /^v.*/
+
+    - architect/push-to-registries:
+        context: architect
+        name: push-to-registries
+        requires:
+        - go-build
+        filters:
+          tags:
+            only: /^v.*/
+          branches:
+            ignore:
+            - main
+
+    - architect/push-to-app-catalog:
+        executor: app-build-suite
+        context: architect
+        name: push-to-giantswarm-app-catalog
+        app_catalog: giantswarm-catalog
+        app_catalog_test: giantswarm-test-catalog
+        chart: mcp-prometheus
+        requires:
+        - push-to-registries
+        persist_chart_archive: true
+        filters:
+          tags:
+            only: /^v.*/
+
+          branches:
+            ignore:
+            - main
+
+    - architect/run-tests-with-ats:
+        name: execute chart tests
+        filters:
+          branches:
+            ignore:
+            - main
+        requires:
+        - push-to-giantswarm-app-catalog

@@ -10,9 +10,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	mcpserver "github.com/mark3labs/mcp-go/server"
+
 	"github.com/giantswarm/mcp-prometheus/internal/server"
 	"github.com/giantswarm/mcp-prometheus/internal/tools/prometheus"
-	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
 // simpleLogger provides basic logging for the server

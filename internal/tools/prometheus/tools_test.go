@@ -8,9 +8,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/giantswarm/mcp-prometheus/internal/server"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
+
+	"github.com/giantswarm/mcp-prometheus/internal/server"
 )
 
 // TestLogger implements server.Logger for testing

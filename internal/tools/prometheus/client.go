@@ -7,10 +7,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/giantswarm/mcp-prometheus/internal/server"
 	"github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+
+	"github.com/giantswarm/mcp-prometheus/internal/server"
 )
 
 // orgIDRoundTripper adds Organization ID header to requests for multi-tenant setups

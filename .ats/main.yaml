@@ -1,0 +1,38 @@
+app-tests-app-config-file: tests/test-values.yaml
+app-tests-deploy-namespace: mcp-kubernetes
+
+smoke-tests-cluster-type: kind
+# smoke-tests-cluster-config-file: tests/kind_config.yaml
+
+upgrade-tests-cluster-type: kind
+# upgrade-tests-cluster-config-file: tests/kind_config.yaml
+upgrade-tests-app-catalog-url: https://giantswarm.github.io/giantswarm-catalog
+# upgrade-tests-app-config-file: tests/test-values.yaml
+
+skip-steps: [functional,upgrade]
+
+# --------
+# Uncomment values below this line to be able to execute app-test-suite against an externally created
+# Kubernetes cluster.
+# Comment out everything above
+
+# If you  want to create a kind cluster, use the line below
+# kind create cluster --config tests/kind_config.yaml --kubeconfig kube.config
+# --------
+
+# app-tests-app-config-file: tests/test-values.yaml
+# app-tests-deploy-namespace: kong
+
+# upgrade-tests-app-catalog-url: https://giantswarm.github.io/giantswarm-catalog
+# upgrade-tests-app-config-file: tests/test-values.yaml
+
+# skip-steps: [functional, upgrade]
+
+# smoke-tests-cluster-type: external
+# functional-tests-cluster-type: external
+# upgrade-tests-cluster-type: external
+# external-cluster-kubeconfig-path: kube.config
+# external-cluster-type: kind
+# external-cluster-version: 1.24.0
+
+# app-tests-skip-app-delete: "Yes"

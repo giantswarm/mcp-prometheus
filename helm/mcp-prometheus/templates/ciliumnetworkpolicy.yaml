@@ -1,0 +1,55 @@
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "mcp-prometheus.fullname" . }}
+  labels:
+    {{- include "mcp-prometheus.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "mcp-prometheus.selectorLabels" . | nindent 6 }}
+  ingress:
+    # Allow ingress from same namespace for health checks and debugging
+    - fromEndpoints:
+        - matchLabels: {}
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    # Allow DNS resolution
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # Allow accessing Prometheus servers (HTTP/HTTPS)
+    - toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+            - port: "3000"
+              protocol: TCP
+            - port: "9000"
+              protocol: TCP
+    # Allow accessing Kubernetes API server for service discovery if needed
+    - toServices:
+        - k8sService:
+            serviceName: kubernetes
+            namespace: default
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP 
