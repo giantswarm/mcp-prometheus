@@ -76,20 +76,7 @@ resources:
     memory: 128Mi
 
 # MCP-specific health probes that test actual MCP functionality
-livenessProbe:
-  exec:
-    command:
-      - /bin/sh
-      - -c
-      - |
-        curl -s -X POST http://localhost:8080/mcp \
-          -H "Content-Type: application/json" \
-          -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}' \
-          | grep -q '"jsonrpc":"2.0"'
-  initialDelaySeconds: 10
-  periodSeconds: 30
-  timeoutSeconds: 5
-  failureThreshold: 3
+livenessProbe: {}
 
 readinessProbe:
   exec:
