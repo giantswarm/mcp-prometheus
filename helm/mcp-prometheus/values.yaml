@@ -78,20 +78,7 @@ resources:
 # MCP-specific health probes that test actual MCP functionality
 livenessProbe: {}
 
-readinessProbe:
-  exec:
-    command:
-      - /bin/sh
-      - -c
-      - |
-        curl -s -X POST http://localhost:8080/mcp \
-          -H "Content-Type: application/json" \
-          -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}' \
-          | grep -q '"result"'
-  initialDelaySeconds: 5
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 3
+readinessProbe: {}
 
 autoscaling:
   enabled: false
