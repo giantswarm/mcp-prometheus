@@ -13,7 +13,7 @@ dist/
 *.dll
 *.so
 *.dylib
-mcp-prometheus
+# mcp-prometheus  # Removed this line - it was too broad and ignored the helm chart
 
 # Test binary, built with `go test -c`
 *.test
@@ -109,4 +109,4 @@ bin/
 # Local configuration
 config.local.yaml
 config.local.yml
-config.local.json mcp-prometheus
+config.local.json

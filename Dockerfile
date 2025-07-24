@@ -1,18 +1,12 @@
-FROM alpine:3.19
+FROM gsoci.azurecr.io/giantswarm/alpine:3.20.3-giantswarm AS user-source
 
-# Curl is needed for the health probes
-RUN apk --no-cache add ca-certificates curl
+FROM scratch
 
-RUN addgroup -g 1000 -S appgroup && \
-    adduser -u 1000 -S appuser -G appgroup
+COPY --from=user-source /etc/passwd /etc/passwd
+COPY --from=user-source /etc/group /etc/group
 
-WORKDIR /
-
-COPY mcp-prometheus .
-
-USER appuser
-
-EXPOSE 8080
+ADD mcp-prometheus /
+USER giantswarm
 
 ENTRYPOINT ["/mcp-prometheus"]
-CMD ["serve"] 
+CMD ["serve"]

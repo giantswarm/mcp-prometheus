@@ -1,64 +1,170 @@
 # DO NOT EDIT. Generated with:
 #
-# devctl
+#    devctl
 #
-# https://github.com/giantswarm/devctl/blob/eea19f200d7cfd27ded22474b787563bbfdb8ec4/pkg/gen/input/makefile/internal/file/Makefile.gen.go.mk.template
+#    https://github.com/giantswarm/devctl/blob/bf7f386ac6a4e807dde959892df1369fee6d789f/pkg/gen/input/makefile/internal/file/Makefile.gen.go.mk.template
 #
 
-APPLICATION    := mcp-prometheus
-BUILDTIMESTAMP := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
-GITSHA1        := $(shell git rev-parse --short HEAD)
+PACKAGE_DIR    := ./bin-dist
+
+APPLICATION    := $(shell go list -m | cut -d '/' -f 3)
+BUILDTIMESTAMP := $(shell date -u '+%FT%TZ')
+GITSHA1        := $(shell git rev-parse --verify HEAD)
 MODULE         := $(shell go list -m)
 OS             := $(shell go env GOOS)
 SOURCES        := $(shell find . -name '*.go')
 VERSION        := $(shell architect project version)
-ifeq ($(VERSION),)
-VERSION := $(shell cat VERSION 2>/dev/null || echo dev)
+ifeq ($(OS), linux)
+EXTLDFLAGS := -static
 endif
-# Add the git hash to the version string if we're using the dev build
-ifeq ($(VERSION), dev)
-VERSION := $(shell echo "$(VERSION)+$(GITSHA1)")
-endif
-
-# go build flags
-LDFLAGS := -w -linkmode 'auto' -extldflags '-static' \
-  -X '$(shell go list -m)/internal/project.buildTime=$(BUILDTIMESTAMP)' \
-  -X '$(shell go list -m)/internal/project.gitSHA=$(GITSHA1)' \
-  -X '$(shell go list -m)/internal/project.version=$(VERSION)'
+LDFLAGS        ?= -w -linkmode 'auto' -extldflags '$(EXTLDFLAGS)' \
+  -X '$(shell go list -m)/pkg/project.buildTimestamp=${BUILDTIMESTAMP}' \
+  -X '$(shell go list -m)/pkg/project.gitSHA=${GITSHA1}'
 
 .DEFAULT_GOAL := build
 
 ##@ Go
 
-all: build
-.PHONY: all
-
+.PHONY: build build-darwin build-darwin-64 build-linux build-linux-arm64 build-windows-amd64
 build: $(APPLICATION) ## Builds a local binary.
-.PHONY: build
+	@echo "====> $@"
+build-darwin: $(APPLICATION)-darwin ## Builds a local binary for darwin/amd64.
+	@echo "====> $@"
+build-darwin-arm64: $(APPLICATION)-darwin-arm64 ## Builds a local binary for darwin/arm64.
+	@echo "====> $@"
+build-linux: $(APPLICATION)-linux ## Builds a local binary for linux/amd64.
+	@echo "====> $@"
+build-linux-arm64: $(APPLICATION)-linux-arm64 ## Builds a local binary for linux/arm64.
+	@echo "====> $@"
+build-windows-amd64: $(APPLICATION)-windows-amd64.exe ## Builds a local binary for windows/amd64.
+	@echo "====> $@"
 
-$(APPLICATION): $(SOURCES) go.mod
-	CGO_ENABLED=0 GOOS=$(OS) go build -ldflags "$(LDFLAGS)" -o $(APPLICATION) .
+$(APPLICATION): $(APPLICATION)-v$(VERSION)-$(OS)-amd64
+	@echo "====> $@"
+	cp -a $< $@
 
-build-darwin: $(SOURCES) go.mod ## Builds a local binary for darwin/amd64.
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(APPLICATION)-darwin .
+$(APPLICATION)-darwin: $(APPLICATION)-v$(VERSION)-darwin-amd64
+	@echo "====> $@"
+	cp -a $< $@
 
-build-linux: $(SOURCES) go.mod ## Builds a local binary for linux/amd64.
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(APPLICATION)-linux .
+$(APPLICATION)-darwin-arm64: $(APPLICATION)-v$(VERSION)-darwin-arm64
+	@echo "====> $@"
+	cp -a $< $@
 
+$(APPLICATION)-linux: $(APPLICATION)-v$(VERSION)-linux-amd64
+	@echo "====> $@"
+	cp -a $< $@
+
+$(APPLICATION)-linux-arm64: $(APPLICATION)-v$(VERSION)-linux-arm64
+	@echo "====> $@"
+	cp -a $< $@
+
+$(APPLICATION)-windows-amd64.exe: $(APPLICATION)-v$(VERSION)-windows-amd64.exe
+	@echo "====> $@"
+	cp -a $< $@
+
+$(APPLICATION)-v$(VERSION)-%-amd64: $(SOURCES)
+	@echo "====> $@"
+	CGO_ENABLED=0 GOOS=$* GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o $@ .
+
+$(APPLICATION)-v$(VERSION)-%-arm64: $(SOURCES)
+	@echo "====> $@"
+	CGO_ENABLED=0 GOOS=$* GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o $@ .
+
+$(APPLICATION)-v$(VERSION)-windows-amd64.exe: $(SOURCES)
+	@echo "====> $@"
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o $@ .
+
+.PHONY: package-darwin-amd64 package-darwin-arm64 package-linux-amd64 package-linux-arm64 package-windows-amd64
+package-darwin-amd64: $(PACKAGE_DIR)/$(APPLICATION)-v$(VERSION)-darwin-amd64.tar.gz ## Prepares a packaged darwin/amd64 version.
+	@echo "====> $@"
+package-darwin-arm64: $(PACKAGE_DIR)/$(APPLICATION)-v$(VERSION)-darwin-arm64.tar.gz ## Prepares a packaged darwin/arm64 version.
+	@echo "====> $@"
+package-linux-amd64: $(PACKAGE_DIR)/$(APPLICATION)-v$(VERSION)-linux-amd64.tar.gz ## Prepares a packaged linux/amd64 version.
+	@echo "====> $@"
+package-linux-arm64: $(PACKAGE_DIR)/$(APPLICATION)-v$(VERSION)-linux-arm64.tar.gz ## Prepares a packaged linux/arm64 version.
+	@echo "====> $@"
+package-windows-amd64: $(PACKAGE_DIR)/$(APPLICATION)-v$(VERSION)-windows-amd64.zip ## Prepares a packaged windows/amd64 version.
+	@echo "====> $@"
+
+$(PACKAGE_DIR)/$(APPLICATION)-v$(VERSION)-windows-amd64.zip: DIR=$(PACKAGE_DIR)/$(APPLICATION)-v$(VERSION)-windows-amd64
+$(PACKAGE_DIR)/$(APPLICATION)-v$(VERSION)-windows-amd64.zip: $(APPLICATION)-v$(VERSION)-windows-amd64.exe
+	@echo "====> $@"
+	/bin/sh .github/zz_generated.windows-code-signing.sh $(APPLICATION) $(VERSION)
+	@echo "Creating directory $(DIR)"
+	mkdir -p $(DIR)
+	cp $< $(DIR)/$(APPLICATION).exe
+	cp README.md LICENSE $(DIR)
+	cd ./bin-dist && zip $(APPLICATION)-v$(VERSION)-windows-amd64.zip $(APPLICATION)-v$(VERSION)-windows-amd64/*
+	rm -rf $(DIR)
+	rm -rf $<
+
+$(PACKAGE_DIR)/$(APPLICATION)-v$(VERSION)-%-amd64.tar.gz: DIR=$(PACKAGE_DIR)/$<
+$(PACKAGE_DIR)/$(APPLICATION)-v$(VERSION)-%-amd64.tar.gz: $(APPLICATION)-v$(VERSION)-%-amd64
+	@echo "====> $@"
+	mkdir -p $(DIR)
+	cp $< $(DIR)/$(APPLICATION)
+	cp README.md LICENSE $(DIR)
+	tar -C $(PACKAGE_DIR) -cvzf $(PACKAGE_DIR)/$<.tar.gz $<
+	rm -rf $(DIR)
+	rm -rf $<
+
+$(PACKAGE_DIR)/$(APPLICATION)-v$(VERSION)-%-arm64.tar.gz: DIR=$(PACKAGE_DIR)/$<
+$(PACKAGE_DIR)/$(APPLICATION)-v$(VERSION)-%-arm64.tar.gz: $(APPLICATION)-v$(VERSION)-%-arm64
+	@echo "====> $@"
+	mkdir -p $(DIR)
+	cp $< $(DIR)/$(APPLICATION)
+	cp README.md LICENSE $(DIR)
+	tar -C $(PACKAGE_DIR) -cvzf $(PACKAGE_DIR)/$<.tar.gz $<
+	rm -rf $(DIR)
+	rm -rf $<
+
+.PHONY: install
 install: ## Install the application.
-	CGO_ENABLED=0 GOOS=$(OS) go install -ldflags "$(LDFLAGS)" .
+	@echo "====> $@"
+	go install -ldflags "$(LDFLAGS)" .
 
+.PHONY: run
+run: ## Runs go run main.go.
+	@echo "====> $@"
+	go run -ldflags "$(LDFLAGS)" -race .
+
+.PHONY: clean
+clean: ## Cleans the binary.
+	@echo "====> $@"
+	rm -f $(APPLICATION)*
+	go clean
+
+.PHONY: imports
+imports: ## Runs goimports.
+	@echo "====> $@"
+	goimports -local $(MODULE) -w .
+
+.PHONY: lint
+lint: ## Runs golangci-lint.
+	@echo "====> $@"
+	golangci-lint run -E gosec -E goconst --timeout=15m ./...
+
+.PHONY: fmt
+fmt: ## Run go fmt against code.
+	go fmt ./...
+
+.PHONY: vet
+vet: ## Run go vet against code.
+	go vet ./...
+
+.PHONY: nancy
+nancy: ## Runs nancy (requires v1.0.37 or newer).
+	@echo "====> $@"
+	CGO_ENABLED=0 go list -json -deps ./... | nancy sleuth --skip-update-check --quiet --exclude-vulnerability-file ./.nancy-ignore --additional-exclude-vulnerability-files ./.nancy-ignore.generated
+
+.PHONY: test
 test: ## Runs go test with default values.
-	go test ./...
+	@echo "====> $@"
+	go test -ldflags "$(LDFLAGS)" -race ./...
 
-test-unit: ## Runs unit tests with race detector.
-	go test -race ./...
-
-test-integration: ## Runs integration tests.
-	go test -tags=integration ./...
-
-test-benchmark: ## Runs benchmarks.
-	go test -bench=. ./...
-
-clean: ## Remove binary files.
-	rm -f $(APPLICATION)* 
+.PHONY: build-docker
+build-docker: build-linux ## Builds docker image to registry.
+	@echo "====> $@"
+	cp -a $(APPLICATION)-linux $(APPLICATION)
+	docker build -t ${APPLICATION}:${VERSION} .

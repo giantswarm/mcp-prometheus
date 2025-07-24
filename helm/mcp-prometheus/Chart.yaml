@@ -1,0 +1,22 @@
+apiVersion: v2
+name: mcp-prometheus
+description: A Helm chart for mcp-prometheus - MCP server for Prometheus metrics
+type: application
+version: 0.1.0
+appVersion: 0.0.11
+home: https://github.com/giantswarm/mcp-prometheus
+icon: https://github.com/prometheus/prometheus/raw/main/documentation/images/prometheus-logo.svg
+sources:
+  - https://github.com/giantswarm/mcp-prometheus
+keywords:
+  - prometheus
+  - mcp
+  - model-context-protocol
+  - monitoring
+  - metrics
+maintainers:
+  - name: Giant Swarm
+    email: team-planeteers@giantswarm.io
+kubeVersion: ">=1.25.0-0"
+annotations:
+  application.giantswarm.io/team: planeteers

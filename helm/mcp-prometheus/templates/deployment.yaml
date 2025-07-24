@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mcp-prometheus.fullname" . }}
+  labels:
+    {{- include "mcp-prometheus.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "mcp-prometheus.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "mcp-prometheus.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "mcp-prometheus.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: {{ include "mcp-prometheus.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /mcp-prometheus
+          args:
+            - serve
+            - --transport={{ .Values.app.server.transport }}
+            - --http-addr={{ .Values.app.server.httpAddr }}
+            - --sse-endpoint={{ .Values.app.server.sseEndpoint }}
+            - --message-endpoint={{ .Values.app.server.messageEndpoint }}
+            - --http-endpoint={{ .Values.app.server.httpEndpoint }}
+            {{- if .Values.app.server.debug }}
+            - --debug
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          {{- if and .Values.livenessProbe (not (empty .Values.livenessProbe)) }}
+          {{- if ne .Values.app.server.transport "stdio" }}
+          livenessProbe:
+            {{- if eq .Values.app.server.transport "streamable-http" }}
+            httpGet:
+              path: {{ .Values.app.server.httpEndpoint }}
+              port: http
+              httpHeaders:
+                - name: Content-Type
+                  value: application/json
+            {{- else if eq .Values.app.server.transport "sse" }}
+            httpGet:
+              path: {{ .Values.app.server.sseEndpoint }}
+              port: http
+            {{- end }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds | default 10 }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds | default 30 }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold | default 3 }}
+          {{- end }}
+          {{- end }}
+          {{- if and .Values.readinessProbe (not (empty .Values.readinessProbe)) }}
+          {{- if ne .Values.app.server.transport "stdio" }}
+          readinessProbe:
+            {{- if eq .Values.app.server.transport "streamable-http" }}
+            httpGet:
+              path: {{ .Values.app.server.httpEndpoint }}
+              port: http
+              httpHeaders:
+                - name: Content-Type
+                  value: application/json
+            {{- else if eq .Values.app.server.transport "sse" }}
+            httpGet:
+              path: {{ .Values.app.server.sseEndpoint }}
+              port: http
+            {{- end }}
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds | default 5 }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold | default 3 }}
+          {{- end }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- with .Values.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.app.env }}
+          env:
+            {{- toYaml .Values.app.env | nindent 12 }}
+          {{- end }}
+      {{- with .Values.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }} 
