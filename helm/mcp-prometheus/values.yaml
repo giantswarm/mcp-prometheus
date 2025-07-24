@@ -122,7 +122,7 @@ app:
 
   # Environment variables for Prometheus configuration
   # These can be used to provide default Prometheus settings
-  env:
+  env: []
     # - name: PROMETHEUS_URL
     #   value: "http://prometheus:9090"
     # - name: PROMETHEUS_ORGID
