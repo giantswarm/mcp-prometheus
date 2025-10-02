@@ -24,7 +24,7 @@ jobs:
           go-version: '1.25'  # Match the version used in auto-release
 
       - name: Install Python for yamllint
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.x'
 
