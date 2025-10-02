@@ -4,7 +4,7 @@ go 1.24.4
 
 require (
 	github.com/mark3labs/mcp-go v0.34.0
-	github.com/prometheus/client_golang v1.22.0
+	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.66.1
 	github.com/spf13/cobra v1.9.1
 )
