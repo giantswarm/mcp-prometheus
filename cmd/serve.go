@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -265,7 +266,7 @@ func runSSEServer(mcpSrv *mcpserver.MCPServer, addr, sseEndpoint, messageEndpoin
 			log.Printf("[DEBUG] Shutdown signal received, initiating SSE server shutdown")
 		}
 		fmt.Println("Shutdown signal received, stopping SSE server...")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if debugMode {
 			log.Printf("[DEBUG] Starting graceful shutdown with 30s timeout")
@@ -323,7 +324,7 @@ func runStreamableHTTPServer(mcpSrv *mcpserver.MCPServer, addr, endpoint string,
 	select {
 	case <-ctx.Done():
 		fmt.Println("Shutdown signal received, stopping HTTP server...")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("error shutting down HTTP server: %w", err)

@@ -173,6 +173,26 @@ func TestInstrumentorWrapToolResultIsError(t *testing.T) {
 	}
 }
 
+func TestInstrumentorWrapNilResult(t *testing.T) {
+	inst := noopInstrumentor()
+
+	// A handler that incorrectly returns (nil, nil) must be counted as an error.
+	handler := func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return nil, nil
+	}
+
+	result, err := inst.Wrap("nil_result_tool", handler)(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if result != nil {
+		t.Error("nil result should be passed through unchanged")
+	}
+	if !strings.Contains(metricsBody(t, inst.metrics), `status="error"`) {
+		t.Error("expected status=error when handler returns (nil, nil)")
+	}
+}
+
 func TestInstrumentorWrapRecordsLatency(t *testing.T) {
 	inst := noopInstrumentor()
 

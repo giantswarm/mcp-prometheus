@@ -50,7 +50,12 @@ func (i *Instrumentor) Wrap(
 			status = "error"
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
-		case result != nil && result.IsError:
+		case result == nil:
+			// Handlers must return a non-nil result when err is nil; treat this
+			// as an internal error so it shows up in metrics and traces.
+			status = "error"
+			span.SetStatus(codes.Error, "handler returned nil result with no error")
+		case result.IsError:
 			status = "error"
 			span.SetStatus(codes.Error, "tool returned an error result")
 		}
