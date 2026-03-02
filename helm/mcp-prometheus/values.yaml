@@ -145,3 +145,8 @@ app:
     #     secretKeyRef:
     #       name: prometheus-auth
     #       key: token
+    # TLS configuration
+    # - name: PROMETHEUS_TLS_SKIP_VERIFY
+    #   value: "true"
+    # - name: PROMETHEUS_TLS_CA_CERT
+    #   value: "/etc/ssl/certs/ca.pem"

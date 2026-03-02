@@ -49,6 +49,8 @@ This provides complete access to your Prometheus metrics, queries, and system in
 - [x] **Multi-tenant organization headers** (Cortex, Mimir, Thanos)
 - [x] **Multiple transport protocols** (stdio, SSE, HTTP)
 - [x] **Cross-platform binary distribution**
+- [x] **TLS skip-verify** (`PROMETHEUS_TLS_SKIP_VERIFY`) for self-signed certs in dev/staging
+- [x] **Custom CA certificate** (`PROMETHEUS_TLS_CA_CERT`) for private PKI / in-cluster CAs
 
 ## Installation
 
@@ -82,6 +84,12 @@ export PROMETHEUS_TOKEN=your_token
 
 # Optional: Default organization ID for multi-tenant setups
 export PROMETHEUS_ORGID=your_organization_id
+
+# Optional: TLS configuration
+# Disable TLS certificate verification (insecure, not for production)
+export PROMETHEUS_TLS_SKIP_VERIFY=true
+# Path to a PEM-encoded CA certificate for custom/private PKI
+export PROMETHEUS_TLS_CA_CERT=/etc/ssl/certs/my-ca.pem
 ```
 
 **Dynamic Configuration**: All MCP tools support `prometheus_url` and `org_id` parameters for per-query configuration, allowing you to query multiple Prometheus instances and organizations dynamically.
