@@ -205,6 +205,9 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext) e
 		mcp.WithString("limit", mcp.Description("Maximum number of metadata entries to return")),
 	)
 
+	// Status / health tools
+	registerPrometheusTools(s, client, sc, "check_ready", "Check whether the Prometheus/Mimir server is ready to serve traffic (GET /-/ready)", handleCheckReady)
+
 	return nil
 }
 
@@ -1112,6 +1115,32 @@ func handleGetTargetsMetadata(ctx context.Context, request mcp.CallToolRequest, 
 				Type: "text",
 				Text: fmt.Sprintf("Targets Metadata:\n%+v", targetsMetadata),
 			},
+		},
+	}, nil
+}
+
+// handleCheckReady handles the check_ready tool
+func handleCheckReady(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
+	sc.Logger().Debug("Checking Prometheus readiness")
+
+	status, err := client.CheckReady(ctx)
+	if err != nil {
+		sc.Logger().Error("Failed to check readiness", "error", err)
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				mcp.TextContent{Type: "text", Text: fmt.Sprintf("Error checking readiness: %v", err)},
+			},
+		}, nil
+	}
+
+	state := "ready"
+	if !status.Ready {
+		state = "not ready"
+	}
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.TextContent{Type: "text", Text: fmt.Sprintf("Prometheus is %s (HTTP %d): %s", state, status.StatusCode, status.Message)},
 		},
 	}, nil
 }
