@@ -1,5 +1,5 @@
 app-tests-app-config-file: tests/test-values.yaml
-app-tests-deploy-namespace: mcp-kubernetes
+app-tests-deploy-namespace: mcp-prometheus
 
 smoke-tests-cluster-type: kind
 # smoke-tests-cluster-config-file: tests/kind_config.yaml

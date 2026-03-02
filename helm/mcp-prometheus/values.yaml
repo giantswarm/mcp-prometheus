@@ -97,6 +97,9 @@ volumeMounts:
   - name: tmp
     mountPath: /tmp
 
+ciliumNetworkPolicy:
+  enabled: true
+
 nodeSelector: {}
 
 tolerations: []

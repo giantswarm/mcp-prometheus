@@ -178,6 +178,15 @@
         }
       }
     },
+    "ciliumNetworkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": ["enabled"]
+    },
     "app": {
       "type": "object",
       "properties": {
