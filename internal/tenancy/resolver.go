@@ -115,9 +115,7 @@ func (r *Resolver) resolve(ctx context.Context, groups []string) ([]string, erro
 
 	seen := make(map[string]struct{})
 	for i := range list.Items {
-		item := list.Items[i]
-		rawSpec, _, _ := unstructuredField(item.Object, "spec")
-		spec, _ := rawSpec.(map[string]interface{})
+		spec, _ := list.Items[i].Object["spec"].(map[string]interface{})
 		if spec == nil {
 			continue
 		}
@@ -127,8 +125,7 @@ func (r *Resolver) resolve(ctx context.Context, groups []string) ([]string, erro
 		}
 
 		// Collect tenant names from spec.tenants[*].name
-		rawTenants, _, _ := unstructuredField(spec, "tenants")
-		if tenants, ok := rawTenants.([]interface{}); ok {
+		if tenants, ok := spec["tenants"].([]interface{}); ok {
 			for _, t := range tenants {
 				if tm, ok := t.(map[string]interface{}); ok {
 					if name, ok := tm["name"].(string); ok && name != "" {
@@ -166,12 +163,6 @@ func matchesRBAC(rbacRaw interface{}, groupSet map[string]struct{}) bool {
 		}
 	}
 	return false
-}
-
-// unstructuredField is a helper to safely extract a nested field from an unstructured map.
-func unstructuredField(obj map[string]interface{}, key string) (interface{}, bool, error) {
-	v, ok := obj[key]
-	return v, ok, nil
 }
 
 // cacheKey creates a stable string key from a sorted, deduplicated list of groups.

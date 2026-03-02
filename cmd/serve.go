@@ -249,7 +249,7 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 
 // serveHTTPWithShutdown binds a TCP listener, serves with the given handler, and
 // shuts down gracefully when ctx is cancelled.
-func serveHTTPWithShutdown(addr string, handler http.Handler, ctx context.Context) error {
+func serveHTTPWithShutdown(ctx context.Context, addr string, handler http.Handler) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", addr, err)
@@ -341,7 +341,7 @@ func runSSEServer(mcpSrv *mcpserver.MCPServer, addr, sseEndpoint, messageEndpoin
 			messageEndpoint: sseServer.MessageHandler(),
 		})
 		fmt.Println("  OAuth 2.1 endpoints mounted at /oauth/*")
-		return serveHTTPWithShutdown(addr, mux, ctx)
+		return serveHTTPWithShutdown(ctx, addr, mux)
 	}
 
 	// No OAuth: use the SSE server's built-in Start/Shutdown lifecycle.
@@ -387,7 +387,7 @@ func runStreamableHTTPServer(mcpSrv *mcpserver.MCPServer, addr, endpoint string,
 			endpoint: httpServer,
 		})
 		fmt.Println("  OAuth 2.1 endpoints mounted at /oauth/*")
-		return serveHTTPWithShutdown(addr, mux, ctx)
+		return serveHTTPWithShutdown(ctx, addr, mux)
 	}
 
 	// No OAuth: use the streamable HTTP server's built-in lifecycle.

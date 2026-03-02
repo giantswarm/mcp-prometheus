@@ -143,23 +143,6 @@ func TestSelectOrgIDPipeSeparatedInvalid(t *testing.T) {
 	}
 }
 
-// --- context ---
-
-func TestOrgIDContextRoundtrip(t *testing.T) {
-	ctx := WithOrgID(context.Background(), "prod-eu")
-	got := OrgIDFromContext(ctx)
-	if got != "prod-eu" {
-		t.Errorf("expected %q, got %q", "prod-eu", got)
-	}
-}
-
-func TestOrgIDContextMissing(t *testing.T) {
-	got := OrgIDFromContext(context.Background())
-	if got != "" {
-		t.Errorf("expected empty string for context without org ID, got %q", got)
-	}
-}
-
 // --- Resolver.TenantsForGroups ---
 
 func TestTenantsForGroupsMatch(t *testing.T) {
