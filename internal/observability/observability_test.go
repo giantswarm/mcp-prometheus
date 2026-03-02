@@ -234,6 +234,23 @@ func TestNewTracerProviderNoOpWhenEnvUnset(t *testing.T) {
 	span.End()
 }
 
+// ── OTel (additional) ─────────────────────────────────────────────────────────
+
+func TestNewTracerProviderCustomServiceName(t *testing.T) {
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+	t.Setenv("OTEL_SERVICE_NAME", "my-custom-service")
+
+	// No OTLP endpoint → still returns a no-op provider regardless of service name.
+	tp, shutdown, err := NewTracerProvider(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer shutdown(context.Background()) //nolint:errcheck
+	if tp == nil {
+		t.Fatal("expected non-nil TracerProvider")
+	}
+}
+
 // ── Server (NewServer + RunServer) ────────────────────────────────────────────
 
 func TestNewServerRoutes(t *testing.T) {
@@ -257,6 +274,42 @@ func TestNewServerRoutes(t *testing.T) {
 				t.Errorf("GET %s: expected %d, got %d", tc.path, tc.want, rr.Code)
 			}
 		})
+	}
+}
+
+func TestListenInvalidAddr(t *testing.T) {
+	_, err := Listen("invalid-address-!@#")
+	if err == nil {
+		t.Fatal("expected error for invalid address")
+	}
+}
+
+func TestRunServerInvalidAddr(t *testing.T) {
+	err := RunServer(context.Background(), "invalid-address-!@#", http.NotFoundHandler())
+	if err == nil {
+		t.Fatal("expected error for invalid address")
+	}
+}
+
+func TestServeExitsWhenListenerClosed(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("could not create listener: %v", err)
+	}
+	// Close the listener immediately; Serve should detect this and return via errCh.
+	ln.Close()
+
+	ctx := context.Background()
+	done := make(chan error, 1)
+	go func() { done <- Serve(ctx, ln, http.NotFoundHandler()) }()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("expected non-nil error when listener is pre-closed")
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("Serve did not return after listener was closed")
 	}
 }
 
