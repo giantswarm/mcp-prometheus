@@ -218,7 +218,7 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 	)
 
 	// Status / health tools
-	registerPrometheusTools(s, client, sc, "check_ready", "Check whether the Prometheus/Mimir server is ready to serve traffic (GET /-/ready)", handleCheckReady)
+	registerPrometheusTools(s, client, sc, middleware, "check_ready", "Check whether the Prometheus/Mimir server is ready to serve traffic (GET /-/ready)", handleCheckReady)
 
 	return nil
 }
