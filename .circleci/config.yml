@@ -1,53 +1,116 @@
 version: 2.1
 orbs:
-  architect: giantswarm/architect@6.2.1
+  architect: giantswarm/architect@6.14.1
 
 workflows:
   build:
     jobs:
     - architect/go-build:
-        name: go-build
+        name: go-build-mcp-prometheus
         binary: mcp-prometheus
         filters:
-            # Trigger the job also on git tag.
           tags:
             only: /^v.*/
 
-    - architect/push-to-registries:
+    # Branch builds: amd64 only for faster PR feedback
+    - architect/push-to-registries-multiarch:
         context: architect
         name: push-to-registries
+        platforms: "linux/amd64"
         requires:
-        - go-build
+        - go-build-mcp-prometheus
         filters:
-          tags:
-            only: /^v.*/
           branches:
             ignore:
             - main
 
-    - architect/push-to-app-catalog:
-        executor: app-build-suite
+    # Tag builds: push multi-arch image to gsoci (primary registry).
+    # Chart push depends on this completing successfully.
+    - architect/push-to-registries-multiarch:
         context: architect
-        name: push-to-giantswarm-app-catalog
-        app_catalog: giantswarm-catalog
-        app_catalog_test: giantswarm-test-catalog
-        chart: mcp-prometheus
+        name: push-to-gsoci-release
+        registries-data: "public gsoci.azurecr.io ACR_GSOCI_USERNAME ACR_GSOCI_PASSWORD true"
         requires:
-        - push-to-registries
-        persist_chart_archive: true
+        - go-build-mcp-prometheus
         filters:
           tags:
             only: /^v.*/
+          branches:
+            ignore: /.*/
 
+    # Tag builds: push multi-arch image to all registries (including China mirrors).
+    # Runs in parallel, does NOT block the chart push. If a mirror is unreachable,
+    # only mirror-dependent clusters are affected, not the primary delivery pipeline.
+    - architect/push-to-registries-multiarch:
+        context: architect
+        name: push-to-all-registries-release
+        requires:
+        - go-build-mcp-prometheus
+        filters:
+          tags:
+            only: /^v.*/
+          branches:
+            ignore: /.*/
+
+    - architect/push-to-app-catalog:
+        executor: app-build-suite
+        context: architect
+        name: build-mcp-prometheus-chart
+        app_catalog: giantswarm-catalog
+        app_catalog_test: giantswarm-test-catalog
+        chart: mcp-prometheus
+        push_to_appcatalog: false
+        push_to_oci_registry: false
+        persist_chart_archive: true
+        requires:
+        - go-build-mcp-prometheus
+        filters:
+          tags:
+            only: /^v.*/
           branches:
             ignore:
             - main
 
     - architect/run-tests-with-ats:
         name: execute chart tests
+        requires:
+        - build-mcp-prometheus-chart
+        filters:
+          tags:
+            only: /^v.*/
+          branches:
+            ignore:
+            - main
+
+    # Branch: push chart after tests + amd64 image
+    - architect/push-to-app-catalog:
+        executor: app-build-suite
+        context: architect
+        name: push-mcp-prometheus-to-giantswarm-app-catalog
+        app_catalog: giantswarm-catalog
+        app_catalog_test: giantswarm-test-catalog
+        chart: mcp-prometheus
+        requires:
+        - execute chart tests
+        - push-to-registries
         filters:
           branches:
             ignore:
             - main
+
+    # Tag: push chart after tests + gsoci image
+    - architect/push-to-app-catalog:
+        executor: app-build-suite
+        context: architect
+        name: push-mcp-prometheus-to-giantswarm-app-catalog-release
+        app_catalog: giantswarm-catalog
+        app_catalog_test: giantswarm-test-catalog
+        chart: mcp-prometheus
         requires:
-        - push-to-giantswarm-app-catalog
+        - execute chart tests
+        - push-to-gsoci-release
+        filters:
+          tags:
+            only: /^v.*/
+          branches:
+            ignore: /.*/
