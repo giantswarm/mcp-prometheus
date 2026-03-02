@@ -159,6 +159,29 @@ app:
         tlsEnabled: false
         keyPrefix: "mcp-prometheus:"
 
+  # Tenancy resolution configuration (only relevant when app.oauth.enabled: true).
+  tenancy:
+    # Resolution mode.
+    #   grafana-organization — read GrafanaOrganization CRDs from Kubernetes (default).
+    #   static               — fixed tenant list or group→tenants map from config.
+    mode: "grafana-organization"
+
+    static:
+      # Comma-separated Mimir tenant IDs returned for all authenticated users.
+      # Used when mode is "static" and groups is empty.
+      tenants: ""
+
+      # Map of Dex group name → list of Mimir tenant IDs.
+      # When non-empty, takes precedence over tenants and resolves per-user.
+      # Example:
+      #   groups:
+      #     team-ops:
+      #       - prod-eu
+      #       - prod-us
+      #     team-dev:
+      #       - staging
+      groups: {}
+
   # Environment variables for Prometheus configuration
   # These can be used to provide default Prometheus settings
   env: []

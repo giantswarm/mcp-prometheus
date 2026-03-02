@@ -249,6 +249,33 @@
             }
           }
         },
+        "tenancy": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["grafana-organization", "static"],
+              "description": "Tenancy resolution mode: grafana-organization (K8s CRDs) or static (config-based)."
+            },
+            "static": {
+              "type": "object",
+              "properties": {
+                "tenants": {
+                  "type": "string",
+                  "description": "Comma-separated Mimir tenant IDs for all authenticated users (static all-users mode)."
+                },
+                "groups": {
+                  "type": "object",
+                  "description": "Map of Dex group name to list of Mimir tenant IDs (static group-mapping mode).",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
         "env": {
           "type": "array"
         }

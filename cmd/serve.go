@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -57,6 +59,10 @@ func newServeCmd() *cobra.Command {
 
 		// Observability
 		metricsAddr string
+
+		// Tenancy
+		tenancyMode   string
+		staticTenants string
 	)
 
 	cmd := &cobra.Command{
@@ -87,12 +93,17 @@ OAuth 2.1 (when --enable-oauth is set):
   DEX_CLIENT_SECRET             - Dex OAuth client secret (required)
   DEX_REDIRECT_URL              - OAuth redirect URL (required)
 
+Tenancy (when --enable-oauth is set):
+  --tenancy-mode                - grafana-organization (default) or static
+  --static-tenants              - Comma-separated tenant IDs for all users (static mode)
+  TENANCY_STATIC_GROUP_MAP      - JSON map of group→[tenant IDs] for group-mapping (static mode)
+
 If PROMETHEUS_URL or PROMETHEUS_ORGID environment variables are not set,
 they can be provided as parameters to individual tool calls.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runServe(transport, debugMode, enableOAuth,
 				httpAddr, sseEndpoint, messageEndpoint, httpEndpoint,
-				metricsAddr)
+				metricsAddr, tenancyMode, staticTenants)
 		},
 	}
 
@@ -108,13 +119,19 @@ they can be provided as parameters to individual tool calls.`,
 	cmd.Flags().StringVar(&httpEndpoint, "http-endpoint", "/mcp", "HTTP endpoint path (for streamable-http transport)")
 	cmd.Flags().StringVar(&metricsAddr, "metrics-addr", ":9091", "Address for the observability HTTP server (/metrics, /healthz, /readyz). Set to empty string to disable.")
 
+	// Tenancy flags (only relevant when --enable-oauth is set)
+	cmd.Flags().StringVar(&tenancyMode, "tenancy-mode", string(tenancy.ModeGrafanaOrganization),
+		"Tenancy resolution mode when OAuth is enabled: grafana-organization or static")
+	cmd.Flags().StringVar(&staticTenants, "static-tenants", "",
+		"Comma-separated Mimir tenant IDs for all authenticated users (--tenancy-mode=static only)")
+
 	return cmd
 }
 
 // runServe contains the main server logic with support for multiple transports
 func runServe(transport string, debugMode bool, enableOAuth bool,
 	httpAddr, sseEndpoint, messageEndpoint, httpEndpoint string,
-	metricsAddr string) error {
+	metricsAddr string, tenancyMode string, staticTenants string) error {
 
 	// Setup graceful shutdown - listen for both SIGINT and SIGTERM
 	shutdownCtx, cancel := signal.NotifyContext(context.Background(),
@@ -148,7 +165,19 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 		defer cleanup()
 		oauthHandler = h
 
-		tenancyResolver, err := tenancy.NewInClusterResolver()
+		// Parse static group map from env: JSON object of group → [tenant IDs].
+		var groupMap map[string][]string
+		if raw := os.Getenv("TENANCY_STATIC_GROUP_MAP"); raw != "" {
+			if err := json.Unmarshal([]byte(raw), &groupMap); err != nil {
+				return fmt.Errorf("TENANCY_STATIC_GROUP_MAP: invalid JSON: %w", err)
+			}
+		}
+
+		tenancyResolver, err := tenancy.NewResolverForMode(
+			tenancy.Mode(tenancyMode),
+			parseTenants(staticTenants),
+			groupMap,
+		)
 		if err != nil {
 			return fmt.Errorf("failed to create tenancy resolver: %w", err)
 		}
@@ -158,7 +187,7 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 			server.WithTenancyResolver(tenancyResolver),
 		)
 
-		fmt.Println("OAuth 2.1 authentication enabled")
+		fmt.Printf("OAuth 2.1 authentication enabled (tenancy-mode: %s)\n", tenancyMode)
 	}
 
 	// Create server context
@@ -245,6 +274,21 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 	default:
 		return fmt.Errorf("unsupported transport type: %s (supported: stdio, sse, streamable-http)", transport)
 	}
+}
+
+// parseTenants splits a comma-separated tenant string into a trimmed, non-empty slice.
+func parseTenants(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 // serveHTTPWithShutdown binds a TCP listener, serves with the given handler, and

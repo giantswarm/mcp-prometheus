@@ -53,6 +53,10 @@ spec:
             {{- end }}
             {{- if .Values.app.oauth.enabled }}
             - --enable-oauth
+            - --tenancy-mode={{ .Values.app.tenancy.mode | default "grafana-organization" }}
+            {{- if .Values.app.tenancy.static.tenants }}
+            - --static-tenants={{ .Values.app.tenancy.static.tenants }}
+            {{- end }}
             {{- end }}
           ports:
             - name: http
@@ -130,11 +134,16 @@ spec:
           volumeMounts:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if or .Values.app.env .Values.app.oauth.enabled }}
+          {{- $hasStaticGroupMap := and .Values.app.oauth.enabled (not (empty .Values.app.tenancy.static.groups)) }}
+          {{- if or .Values.app.env .Values.app.oauth.enabled $hasStaticGroupMap }}
           env:
             {{- if .Values.app.oauth.enabled }}
             - name: MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION
               value: {{ .Values.app.oauth.allowPublicRegistration | quote }}
+            {{- end }}
+            {{- if $hasStaticGroupMap }}
+            - name: TENANCY_STATIC_GROUP_MAP
+              value: {{ .Values.app.tenancy.static.groups | toJson | quote }}
             {{- end }}
             {{- if .Values.app.env }}
             {{- toYaml .Values.app.env | nindent 12 }}
