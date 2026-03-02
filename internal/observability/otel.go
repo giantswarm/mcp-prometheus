@@ -6,10 +6,10 @@ import (
 	"os"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 )
@@ -40,7 +40,10 @@ func NewTracerProvider(ctx context.Context) (trace.TracerProvider, func(context.
 	}
 
 	res, err := resource.New(ctx,
-		resource.WithAttributes(attribute.String("service.name", serviceName)),
+		resource.WithTelemetrySDK(),
+		resource.WithFromEnv(),
+		resource.WithHost(),
+		resource.WithAttributes(semconv.ServiceName(serviceName)),
 	)
 	if err != nil {
 		// Non-fatal: fall back to the default resource.

@@ -21,19 +21,19 @@ import (
 // simpleLogger provides basic logging for the server
 type simpleLogger struct{}
 
-func (l *simpleLogger) Debug(msg string, args ...interface{}) {
+func (l *simpleLogger) Debug(msg string, args ...any) {
 	log.Printf("[DEBUG] %s %v", msg, args)
 }
 
-func (l *simpleLogger) Info(msg string, args ...interface{}) {
+func (l *simpleLogger) Info(msg string, args ...any) {
 	log.Printf("[INFO] %s %v", msg, args)
 }
 
-func (l *simpleLogger) Warn(msg string, args ...interface{}) {
+func (l *simpleLogger) Warn(msg string, args ...any) {
 	log.Printf("[WARN] %s %v", msg, args)
 }
 
-func (l *simpleLogger) Error(msg string, args ...interface{}) {
+func (l *simpleLogger) Error(msg string, args ...any) {
 	log.Printf("[ERROR] %s %v", msg, args)
 }
 
@@ -149,12 +149,17 @@ func runServe(transport string, debugMode bool,
 
 	inst := observability.NewInstrumentor(metrics, tp)
 
-	// Start observability HTTP server (/metrics, /healthz, /readyz) unless disabled
+	// Start observability HTTP server (/metrics, /healthz, /readyz) unless disabled.
+	// Listen is called synchronously so a port-conflict error fails startup immediately.
 	if metricsAddr != "" {
 		mux := observability.NewServer(metrics, health)
+		ln, err := observability.Listen(metricsAddr)
+		if err != nil {
+			return fmt.Errorf("failed to bind observability server: %w", err)
+		}
+		fmt.Printf("Observability server listening on %s\n", metricsAddr)
 		go func() {
-			fmt.Printf("Observability server starting on %s\n", metricsAddr)
-			if err := observability.RunServer(shutdownCtx, metricsAddr, mux); err != nil {
+			if err := observability.Serve(shutdownCtx, ln, mux); err != nil {
 				log.Printf("Observability server stopped: %v", err)
 			}
 		}()

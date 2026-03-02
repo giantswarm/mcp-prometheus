@@ -3,6 +3,7 @@ package observability
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 )
@@ -20,18 +21,34 @@ func NewServer(metrics *Metrics, health *Health) *http.ServeMux {
 	return mux
 }
 
-// RunServer starts an HTTP server on addr and blocks until ctx is cancelled,
-// at which point the server is shut down gracefully.
-func RunServer(ctx context.Context, addr string, handler http.Handler) error {
+// Listen creates a TCP listener on addr.  The error is returned synchronously
+// so the caller can fail fast before launching any goroutines.
+func Listen(addr string) (net.Listener, error) {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("observability server listen %s: %w", addr, err)
+	}
+	return ln, nil
+}
+
+// Serve starts an HTTP server using the pre-bound listener and blocks until
+// ctx is cancelled, at which point the server is shut down gracefully.
+//
+// Callers should use [Listen] first to surface bind errors synchronously, then
+// launch Serve in a goroutine:
+//
+//	ln, err := observability.Listen(addr)
+//	if err != nil { return err }
+//	go observability.Serve(ctx, ln, handler)
+func Serve(ctx context.Context, ln net.Listener, handler http.Handler) error {
 	srv := &http.Server{
-		Addr:        addr,
 		Handler:     handler,
 		ReadTimeout: 10 * time.Second,
 	}
 
 	errCh := make(chan error, 1)
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}
 		close(errCh)
@@ -51,4 +68,15 @@ func RunServer(ctx context.Context, addr string, handler http.Handler) error {
 		}
 		return nil
 	}
+}
+
+// RunServer is a convenience wrapper around [Listen] and [Serve].
+// Prefer calling them separately when you need to surface bind errors before
+// launching a goroutine.
+func RunServer(ctx context.Context, addr string, handler http.Handler) error {
+	ln, err := Listen(addr)
+	if err != nil {
+		return err
+	}
+	return Serve(ctx, ln, handler)
 }

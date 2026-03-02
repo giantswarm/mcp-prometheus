@@ -57,7 +57,7 @@ spec:
               protocol: TCP
             {{- if .Values.app.server.metricsAddr }}
             - name: metrics
-              containerPort: 9091
+              containerPort: {{ trimPrefix ":" .Values.app.server.metricsAddr | int }}
               protocol: TCP
             {{- end }}
           {{- if .Values.app.server.metricsAddr }}
