@@ -98,7 +98,9 @@ func NewClient(config server.PrometheusConfig, logger server.Logger) *Client {
 		if config.TLSSkipVerify {
 			logger.Warn("TLS certificate verification is disabled — do not use in production")
 		}
-		roundTripper = &http.Transport{TLSClientConfig: tlsConfig}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = tlsConfig
+		roundTripper = transport
 	}
 
 	// Add authentication layer

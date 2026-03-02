@@ -127,6 +127,40 @@ func TestNewClientTLSInvalidPEM(t *testing.T) {
 	}
 }
 
+// TestNewClientTLSSkipVerifyWithCustomCA verifies that setting both TLSSkipVerify
+// and TLSCACert simultaneously is a valid combination: the custom CA is loaded
+// (pool is set on the TLS config) and InsecureSkipVerify is also set.
+func TestNewClientTLSSkipVerifyWithCustomCA(t *testing.T) {
+	mockServer := httptest.NewTLSServer(http.HandlerFunc(tlsQueryHandler))
+	defer mockServer.Close()
+
+	// Write the server's cert as the CA so the pool is valid.
+	derBytes := mockServer.TLS.Certificates[0].Certificate[0]
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	tmpFile, err := os.CreateTemp(t.TempDir(), "ca-*.pem")
+	if err != nil {
+		t.Fatalf("failed to create temp CA file: %v", err)
+	}
+	if _, err := tmpFile.Write(certPEM); err != nil {
+		t.Fatalf("failed to write CA cert: %v", err)
+	}
+	tmpFile.Close()
+
+	config := server.PrometheusConfig{
+		URL:           mockServer.URL,
+		TLSSkipVerify: true,
+		TLSCACert:     tmpFile.Name(),
+	}
+	client := NewClient(config, &TestLogger{})
+	if client.client == nil {
+		t.Fatal("expected client to be initialized with TLSSkipVerify+CustomCA")
+	}
+
+	if _, err := client.ExecuteQuery("up", ""); err != nil {
+		t.Errorf("unexpected error with TLSSkipVerify+CustomCA: %v", err)
+	}
+}
+
 // TestNewClientTLSUntrustedException verifies that a client WITHOUT TLS config
 // fails to connect to a TLS server with a self-signed cert (i.e. the default
 // transport correctly rejects it).
