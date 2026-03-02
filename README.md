@@ -31,6 +31,7 @@ This provides complete access to your Prometheus metrics, queries, and system in
 - [x] **Runtime information** and system status
 - [x] **Configuration and flags** inspection
 - [x] **TSDB statistics** and cardinality information
+- [x] **Readiness check** (`check_ready`) — query `/-/ready` (compatible with Prometheus and Mimir)
 
 ### 🚨 **Alerting & Rules**
 - [x] **Active alerts** monitoring
@@ -162,6 +163,7 @@ Add the server configuration to your MCP client. For example, with Claude Deskto
 | `mcp_prometheus_get_flags` | Get Prometheus runtime flags | - | `prometheus_url`, `org_id` |
 | `mcp_prometheus_get_config` | Get Prometheus configuration | - | `prometheus_url`, `org_id` |
 | `mcp_prometheus_get_tsdb_stats` | Get TSDB cardinality statistics | - | `prometheus_url`, `org_id`, `limit` |
+| `mcp_prometheus_check_ready` | Check server readiness (`/-/ready`) — works on Prometheus and Mimir | - | `prometheus_url`, `org_id` |
 
 ### 🚨 Alerting & Rules Tools
 

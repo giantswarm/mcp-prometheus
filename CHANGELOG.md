@@ -12,8 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TLS support for the Prometheus/Mimir client:
   - `PROMETHEUS_TLS_SKIP_VERIFY=true` — disable TLS certificate verification (not recommended for production)
   - `PROMETHEUS_TLS_CA_CERT=<path>` — path to a PEM-encoded CA certificate file for custom/private PKI
+- `check_ready` tool: check whether the Prometheus or Mimir server is ready to serve traffic (`GET /-/ready`); compatible with both Prometheus and Mimir
 
-## [0.0.11]
+## [0.0.11] - 2025-07-25
 
 ### Added
 
