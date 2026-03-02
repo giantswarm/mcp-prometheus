@@ -2,8 +2,11 @@ package prometheus
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -71,8 +74,32 @@ func NewClient(config server.PrometheusConfig, logger server.Logger) *Client {
 		}
 	}
 
-	// Start with default transport
-	roundTripper := http.DefaultTransport
+	// Start with default transport, or a custom TLS transport when needed
+	var roundTripper http.RoundTripper = http.DefaultTransport
+
+	if config.TLSSkipVerify || config.TLSCACert != "" {
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: config.TLSSkipVerify, //nolint:gosec // intentional, operator-controlled
+		}
+		if config.TLSCACert != "" {
+			caPEM, err := os.ReadFile(config.TLSCACert)
+			if err != nil {
+				logger.Error("Failed to read CA certificate", "path", config.TLSCACert, "error", err)
+				return &Client{client: nil, config: config, logger: logger}
+			}
+			pool := x509.NewCertPool()
+			if !pool.AppendCertsFromPEM(caPEM) {
+				logger.Error("Failed to parse CA certificate — file may not be valid PEM", "path", config.TLSCACert)
+				return &Client{client: nil, config: config, logger: logger}
+			}
+			tlsConfig.RootCAs = pool
+			logger.Debug("Using custom CA certificate", "path", config.TLSCACert)
+		}
+		if config.TLSSkipVerify {
+			logger.Warn("TLS certificate verification is disabled — do not use in production")
+		}
+		roundTripper = &http.Transport{TLSClientConfig: tlsConfig}
+	}
 
 	// Add authentication layer
 	if config.Token != "" {

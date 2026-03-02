@@ -21,6 +21,10 @@ type PrometheusConfig struct {
 	Password string
 	Token    string
 	OrgID    string
+
+	// TLS configuration
+	TLSSkipVerify bool   // PROMETHEUS_TLS_SKIP_VERIFY — disable TLS certificate verification
+	TLSCACert     string // PROMETHEUS_TLS_CA_CERT — path to a PEM-encoded CA certificate file
 }
 
 // ServerContext holds the server configuration and shared resources
@@ -83,11 +87,13 @@ func NewServerContext(ctx context.Context, opts ...ServerOption) (*ServerContext
 	// Load Prometheus configuration from environment if not provided
 	if sc.prometheusConfig.URL == "" {
 		sc.prometheusConfig = PrometheusConfig{
-			URL:      os.Getenv("PROMETHEUS_URL"),
-			Username: os.Getenv("PROMETHEUS_USERNAME"),
-			Password: os.Getenv("PROMETHEUS_PASSWORD"),
-			Token:    os.Getenv("PROMETHEUS_TOKEN"),
-			OrgID:    os.Getenv("PROMETHEUS_ORGID"),
+			URL:           os.Getenv("PROMETHEUS_URL"),
+			Username:      os.Getenv("PROMETHEUS_USERNAME"),
+			Password:      os.Getenv("PROMETHEUS_PASSWORD"),
+			Token:         os.Getenv("PROMETHEUS_TOKEN"),
+			OrgID:         os.Getenv("PROMETHEUS_ORGID"),
+			TLSSkipVerify: os.Getenv("PROMETHEUS_TLS_SKIP_VERIFY") == "true",
+			TLSCACert:     os.Getenv("PROMETHEUS_TLS_CA_CERT"),
 		}
 	}
 

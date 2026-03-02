@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TLS support for the Prometheus/Mimir client:
+  - `PROMETHEUS_TLS_SKIP_VERIFY=true` — disable TLS certificate verification (not recommended for production)
+  - `PROMETHEUS_TLS_CA_CERT=<path>` — path to a PEM-encoded CA certificate file for custom/private PKI
+
+## [0.0.11]
+
+### Added
+
 - Initial implementation of MCP (Model Context Protocol) server for Prometheus
 - Comprehensive Helm chart for Kubernetes deployment
 - Docker container setup with security best practices
