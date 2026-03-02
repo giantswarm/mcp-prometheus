@@ -144,6 +144,11 @@ app:
     # Generate with: openssl rand -hex 32
     encryptionKey: ""
 
+    # Allow unauthenticated dynamic client registration (RFC 7591).
+    # Set to true for MCP Inspector / local development only.
+    # MUST remain false in production.
+    allowPublicRegistration: false
+
     # Token storage backend
     storage:
       # "memory" (default, no persistence) or "valkey"

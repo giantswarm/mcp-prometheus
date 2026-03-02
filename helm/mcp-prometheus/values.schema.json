@@ -220,7 +220,15 @@
             "enabled": { "type": "boolean" },
             "existingSecret": { "type": "string" },
             "dexClientSecret": { "type": "string" },
-            "encryptionKey": { "type": "string" },
+            "encryptionKey": {
+              "type": "string",
+              "pattern": "^([a-fA-F0-9]{64})?$",
+              "description": "AES-256-GCM key: hex-encoded 32 bytes (64 hex chars). Generate with: openssl rand -hex 32"
+            },
+            "allowPublicRegistration": {
+              "type": "boolean",
+              "description": "Allow unauthenticated dynamic client registration. true only for dev/MCP Inspector; false in production."
+            },
             "storage": {
               "type": "object",
               "properties": {
