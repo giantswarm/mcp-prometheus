@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `check_ready` tool: check whether the Prometheus or Mimir server is ready to serve traffic (`GET /-/ready`); compatible with both Prometheus and Mimir
+
+## [0.0.11]
+
+### Added
+
 - Initial implementation of MCP (Model Context Protocol) server for Prometheus
 - Comprehensive Helm chart for Kubernetes deployment
 - Docker container setup with security best practices

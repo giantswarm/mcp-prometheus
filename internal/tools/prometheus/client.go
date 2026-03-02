@@ -3,8 +3,10 @@ package prometheus
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/api"
@@ -52,9 +54,10 @@ func (b *bearerTokenRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 
 // Client wraps the official Prometheus client with logging
 type Client struct {
-	client v1.API
-	config server.PrometheusConfig
-	logger server.Logger
+	client     v1.API
+	httpClient *http.Client // for raw HTTP calls (health/ready endpoints)
+	config     server.PrometheusConfig
+	logger     server.Logger
 }
 
 // NewClient creates a new Prometheus client using the official client library
@@ -123,9 +126,10 @@ func NewClient(config server.PrometheusConfig, logger server.Logger) *Client {
 	logger.Debug("Successfully created Prometheus client", "address", config.URL)
 
 	return &Client{
-		client: v1.NewAPI(promClient),
-		config: config,
-		logger: logger,
+		client:     v1.NewAPI(promClient),
+		httpClient: &http.Client{Transport: roundTripper, Timeout: 10 * time.Second},
+		config:     config,
+		logger:     logger,
 	}
 }
 
@@ -907,6 +911,39 @@ func (c *Client) QueryExemplars(query, start, end string) (interface{}, error) {
 	}
 
 	return exemplars, nil
+}
+
+// HealthStatus represents the result of a readiness check
+type HealthStatus struct {
+	Ready      bool   `json:"ready"`
+	StatusCode int    `json:"statusCode"`
+	Message    string `json:"message"`
+}
+
+// CheckReady checks whether the Prometheus/Mimir server is ready to serve traffic (GET /-/ready)
+func (c *Client) CheckReady(ctx context.Context) (*HealthStatus, error) {
+	if c.httpClient == nil {
+		return nil, fmt.Errorf("Prometheus client not initialized")
+	}
+	url := strings.TrimRight(c.config.URL, "/") + "/-/ready"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create readiness check request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("readiness check request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	if err != nil {
+		c.logger.Warn("Failed to read readiness response body", "error", err)
+	}
+	return &HealthStatus{
+		Ready:      resp.StatusCode == http.StatusOK,
+		StatusCode: resp.StatusCode,
+		Message:    strings.TrimSpace(string(body)),
+	}, nil
 }
 
 // GetTargetsMetadata gets metadata about metrics from specific targets
