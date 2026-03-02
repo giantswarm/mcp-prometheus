@@ -51,6 +51,9 @@ spec:
             {{- if .Values.app.server.metricsAddr }}
             - --metrics-addr={{ .Values.app.server.metricsAddr }}
             {{- end }}
+            {{- if .Values.app.oauth.enabled }}
+            - --enable-oauth
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080
@@ -130,6 +133,11 @@ spec:
           {{- if .Values.app.env }}
           env:
             {{- toYaml .Values.app.env | nindent 12 }}
+          {{- end }}
+          {{- if .Values.app.oauth.enabled }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.app.oauth.existingSecret | default (printf "%s-oauth" (include "mcp-prometheus.fullname" .)) }}
           {{- end }}
       {{- with .Values.volumes }}
       volumes:

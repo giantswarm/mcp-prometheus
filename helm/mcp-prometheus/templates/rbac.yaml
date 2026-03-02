@@ -1,0 +1,36 @@
+{{- if and .Values.serviceAccount.create .Values.app.oauth.enabled -}}
+{{/*
+ClusterRole granting the mcp-prometheus ServiceAccount read access to
+GrafanaOrganization CRDs so the tenancy resolver can map authenticated
+user groups to Mimir tenant IDs.
+
+This resource is only created when OAuth 2.1 is enabled
+(app.oauth.enabled: true), because without OAuth the server does not
+perform tenancy resolution.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "mcp-prometheus.fullname" . }}
+  labels:
+    {{- include "mcp-prometheus.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["observability.giantswarm.io"]
+    resources: ["grafanaorganizations"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "mcp-prometheus.fullname" . }}
+  labels:
+    {{- include "mcp-prometheus.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "mcp-prometheus.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "mcp-prometheus.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
