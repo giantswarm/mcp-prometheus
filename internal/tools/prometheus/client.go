@@ -935,7 +935,10 @@ func (c *Client) CheckReady(ctx context.Context) (*HealthStatus, error) {
 		return nil, fmt.Errorf("readiness check request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	if err != nil {
+		c.logger.Warn("Failed to read readiness response body", "error", err)
+	}
 	return &HealthStatus{
 		Ready:      resp.StatusCode == http.StatusOK,
 		StatusCode: resp.StatusCode,

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -101,6 +102,21 @@ func TestClient(t *testing.T) {
 			testFunc: func(c *Client) error {
 				_, err := c.GetTargets()
 				return err
+			},
+		},
+		{
+			name:     "CheckReady",
+			endpoint: "/-/ready",
+			response: "Prometheus is Ready.",
+			testFunc: func(c *Client) error {
+				status, err := c.CheckReady(context.Background())
+				if err != nil {
+					return err
+				}
+				if !status.Ready {
+					return fmt.Errorf("expected Ready=true, got false")
+				}
+				return nil
 			},
 		},
 	}
@@ -313,5 +329,130 @@ func TestHandleGetMetricMetadata(t *testing.T) {
 
 	if result.IsError {
 		t.Errorf("Expected success, got error: %v", result.Content)
+	}
+}
+
+func TestCheckReady(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		wantReady  bool
+	}{
+		{name: "ready", statusCode: http.StatusOK, body: "Prometheus is Ready.", wantReady: true},
+		{name: "not ready", statusCode: http.StatusServiceUnavailable, body: "Service Unavailable", wantReady: false},
+		{name: "unexpected 500", statusCode: http.StatusInternalServerError, body: "internal error", wantReady: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				w.Write([]byte(tt.body)) //nolint:errcheck
+			}))
+			defer srv.Close()
+
+			client := NewClient(server.PrometheusConfig{URL: srv.URL}, &TestLogger{})
+			status, err := client.CheckReady(context.Background())
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if status.Ready != tt.wantReady {
+				t.Errorf("Ready=%v, want %v", status.Ready, tt.wantReady)
+			}
+			if status.StatusCode != tt.statusCode {
+				t.Errorf("StatusCode=%d, want %d", status.StatusCode, tt.statusCode)
+			}
+			if status.Message != tt.body {
+				t.Errorf("Message=%q, want %q", status.Message, tt.body)
+			}
+		})
+	}
+}
+
+func TestCheckReadyConnectionError(t *testing.T) {
+	client := NewClient(server.PrometheusConfig{URL: "http://127.0.0.1:1"}, &TestLogger{})
+	_, err := client.CheckReady(context.Background())
+	if err == nil {
+		t.Fatal("expected connection error, got nil")
+	}
+}
+
+func TestHandleCheckReady(t *testing.T) {
+	tests := []struct {
+		name        string
+		statusCode  int
+		body        string
+		wantIsError bool
+		wantText    string
+	}{
+		{
+			name:        "ready",
+			statusCode:  http.StatusOK,
+			body:        "Prometheus is Ready.",
+			wantIsError: false,
+			wantText:    "ready",
+		},
+		{
+			name:        "not ready",
+			statusCode:  http.StatusServiceUnavailable,
+			body:        "not yet",
+			wantIsError: false,
+			wantText:    "not ready",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				w.Write([]byte(tt.body)) //nolint:errcheck
+			}))
+			defer srv.Close()
+
+			ctx := context.Background()
+			sc, err := server.NewServerContext(ctx,
+				server.WithPrometheusConfig(server.PrometheusConfig{URL: srv.URL}),
+				server.WithLogger(&TestLogger{}),
+			)
+			if err != nil {
+				t.Fatalf("failed to create server context: %v", err)
+			}
+			defer sc.Shutdown()
+
+			client := NewClient(sc.PrometheusConfig(), sc.Logger())
+			result, err := handleCheckReady(ctx, mcp.CallToolRequest{}, client, sc)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result.IsError != tt.wantIsError {
+				t.Errorf("IsError=%v, want %v", result.IsError, tt.wantIsError)
+			}
+			text := result.Content[0].(mcp.TextContent).Text
+			if !strings.Contains(text, tt.wantText) {
+				t.Errorf("result text %q does not contain %q", text, tt.wantText)
+			}
+		})
+	}
+}
+
+func TestHandleCheckReadyConnectionError(t *testing.T) {
+	ctx := context.Background()
+	sc, err := server.NewServerContext(ctx,
+		server.WithPrometheusConfig(server.PrometheusConfig{URL: "http://127.0.0.1:1"}),
+		server.WithLogger(&TestLogger{}),
+	)
+	if err != nil {
+		t.Fatalf("failed to create server context: %v", err)
+	}
+	defer sc.Shutdown()
+
+	client := NewClient(sc.PrometheusConfig(), sc.Logger())
+	result, err := handleCheckReady(ctx, mcp.CallToolRequest{}, client, sc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected IsError=true for connection failure")
 	}
 }
