@@ -83,6 +83,14 @@ func withLabelMatchingParams(options ...mcp.ToolOption) []mcp.ToolOption {
 	return append(matchParams, options...)
 }
 
+// ToolMiddleware is an optional hook invoked around each MCP tool call.
+// name is the tool name; next is the underlying handler.
+// Implement this to add metrics, tracing, or other cross-cutting concerns.
+type ToolMiddleware func(
+	name string,
+	next func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error),
+) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+
 // Handler wrapper type for cleaner function signatures
 type PrometheusHandler func(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error)
 
@@ -111,27 +119,31 @@ func withDynamicPrometheusClient(handler PrometheusHandler, client *Client, sc *
 }
 
 // Helper function to create and register a tool with common patterns
-func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.ServerContext, toolName string, description string, handler PrometheusHandler, options ...mcp.ToolOption) {
-	// Always include prometheus connection parameters
+func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.ServerContext, middleware []ToolMiddleware, toolName string, description string, handler PrometheusHandler, options ...mcp.ToolOption) {
 	allOptions := withPrometheusConnectionParams(options...)
-
 	tool := mcp.NewTool(toolName, append([]mcp.ToolOption{mcp.WithDescription(description)}, allOptions...)...)
-	s.AddTool(tool, withDynamicPrometheusClient(handler, client, sc))
+
+	h := withDynamicPrometheusClient(handler, client, sc)
+	for _, mw := range middleware {
+		h = mw(toolName, h)
+	}
+	s.AddTool(tool, h)
 }
 
-// RegisterPrometheusTools registers Prometheus-related tools with the MCP server
-func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext) error {
+// RegisterPrometheusTools registers Prometheus-related tools with the MCP server.
+// Pass optional ToolMiddleware values to instrument every tool call (e.g. metrics, tracing).
+func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, middleware ...ToolMiddleware) error {
 	// Create Prometheus client
 	client := NewClient(sc.PrometheusConfig(), sc.Logger())
 
 	// Query execution tools
-	registerPrometheusTools(s, client, sc, "execute_query", "Execute a PromQL instant query against Prometheus",
+	registerPrometheusTools(s, client, sc, middleware, "execute_query", "Execute a PromQL instant query against Prometheus",
 		handleExecuteQuery, withQueryEnhancementParams(
 			mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string")),
 			mcp.WithString("time", mcp.Description("Optional RFC3339 or Unix timestamp (default: current time)")),
 		)...)
 
-	registerPrometheusTools(s, client, sc, "execute_range_query", "Execute a PromQL range query with start time, end time, and step interval",
+	registerPrometheusTools(s, client, sc, middleware, "execute_range_query", "Execute a PromQL range query with start time, end time, and step interval",
 		handleExecuteRangeQuery, withQueryEnhancementParams(
 			mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string")),
 			mcp.WithString("start", mcp.Required(), mcp.Description("Start time as RFC3339 or Unix timestamp")),
@@ -140,65 +152,65 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext) e
 		)...)
 
 	// Metrics discovery tools
-	registerPrometheusTools(s, client, sc, "list_metrics", "List all available metrics in Prometheus",
+	registerPrometheusTools(s, client, sc, middleware, "list_metrics", "List all available metrics in Prometheus",
 		handleListMetrics, withTimeFilteringParams(withLabelMatchingParams()...)...)
 
-	registerPrometheusTools(s, client, sc, "get_metric_metadata", "Get metadata for a specific metric",
+	registerPrometheusTools(s, client, sc, middleware, "get_metric_metadata", "Get metadata for a specific metric",
 		handleGetMetricMetadata,
 		mcp.WithString("metric", mcp.Required(), mcp.Description("The name of the metric to retrieve metadata for")),
 		mcp.WithString("limit", mcp.Description("Maximum number of metadata entries to return")),
 	)
 
 	// Label and series discovery tools
-	registerPrometheusTools(s, client, sc, "list_label_names", "Get all available label names",
+	registerPrometheusTools(s, client, sc, middleware, "list_label_names", "Get all available label names",
 		handleListLabelNames, withTimeFilteringParams(withLabelMatchingParams(
 			mcp.WithString("limit", mcp.Description("Maximum number of label names to return")),
 		)...)...)
 
-	registerPrometheusTools(s, client, sc, "list_label_values", "Get values for a specific label",
+	registerPrometheusTools(s, client, sc, middleware, "list_label_values", "Get values for a specific label",
 		handleListLabelValues, withTimeFilteringParams(withLabelMatchingParams(
 			mcp.WithString("label", mcp.Required(), mcp.Description("The label name to get values for")),
 			mcp.WithString("limit", mcp.Description("Maximum number of label values to return")),
 		)...)...)
 
-	registerPrometheusTools(s, client, sc, "find_series", "Find series by label matchers",
+	registerPrometheusTools(s, client, sc, middleware, "find_series", "Find series by label matchers",
 		handleFindSeries, withTimeFilteringParams(
 			mcp.WithArray("matches", mcp.Required(), mcp.Description("Array of label matchers (e.g., ['{job=\"prometheus\"}', '{__name__=~\"http_.*\"}'])")),
 			mcp.WithString("limit", mcp.Description("Maximum number of series to return")),
 		)...)
 
 	// Target and system information tools
-	registerPrometheusTools(s, client, sc, "get_targets", "Get information about all scrape targets", handleGetTargets)
+	registerPrometheusTools(s, client, sc, middleware, "get_targets", "Get information about all scrape targets", handleGetTargets)
 
-	registerPrometheusTools(s, client, sc, "get_build_info", "Get build information about the Prometheus server", handleGetBuildInfo)
+	registerPrometheusTools(s, client, sc, middleware, "get_build_info", "Get build information about the Prometheus server", handleGetBuildInfo)
 
-	registerPrometheusTools(s, client, sc, "get_runtime_info", "Get runtime information about the Prometheus server", handleGetRuntimeInfo)
+	registerPrometheusTools(s, client, sc, middleware, "get_runtime_info", "Get runtime information about the Prometheus server", handleGetRuntimeInfo)
 
-	registerPrometheusTools(s, client, sc, "get_flags", "Get runtime flags that Prometheus was launched with", handleGetFlags)
+	registerPrometheusTools(s, client, sc, middleware, "get_flags", "Get runtime flags that Prometheus was launched with", handleGetFlags)
 
-	registerPrometheusTools(s, client, sc, "get_config", "Get Prometheus configuration", handleGetConfig)
+	registerPrometheusTools(s, client, sc, middleware, "get_config", "Get Prometheus configuration", handleGetConfig)
 
 	// Alerting tools
-	registerPrometheusTools(s, client, sc, "get_alerts", "Get active alerts", handleGetAlerts)
+	registerPrometheusTools(s, client, sc, middleware, "get_alerts", "Get active alerts", handleGetAlerts)
 
-	registerPrometheusTools(s, client, sc, "get_alertmanagers", "Get AlertManager discovery information", handleGetAlertManagers)
+	registerPrometheusTools(s, client, sc, middleware, "get_alertmanagers", "Get AlertManager discovery information", handleGetAlertManagers)
 
-	registerPrometheusTools(s, client, sc, "get_rules", "Get recording and alerting rules", handleGetRules)
+	registerPrometheusTools(s, client, sc, middleware, "get_rules", "Get recording and alerting rules", handleGetRules)
 
 	// Advanced tools
-	registerPrometheusTools(s, client, sc, "get_tsdb_stats", "Get TSDB cardinality statistics",
+	registerPrometheusTools(s, client, sc, middleware, "get_tsdb_stats", "Get TSDB cardinality statistics",
 		handleGetTSDBStats,
 		mcp.WithString("limit", mcp.Description("Maximum number of stats entries to return")),
 	)
 
-	registerPrometheusTools(s, client, sc, "query_exemplars", "Query exemplars for traces",
+	registerPrometheusTools(s, client, sc, middleware, "query_exemplars", "Query exemplars for traces",
 		handleQueryExemplars,
 		mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string to find exemplars for")),
 		mcp.WithString("start", mcp.Required(), mcp.Description("Start time as RFC3339 or Unix timestamp")),
 		mcp.WithString("end", mcp.Required(), mcp.Description("End time as RFC3339 or Unix timestamp")),
 	)
 
-	registerPrometheusTools(s, client, sc, "get_targets_metadata", "Get metadata about metrics from specific targets",
+	registerPrometheusTools(s, client, sc, middleware, "get_targets_metadata", "Get metadata about metrics from specific targets",
 		handleGetTargetsMetadata,
 		mcp.WithString("match_target", mcp.Description("Target matcher to filter targets")),
 		mcp.WithString("metric", mcp.Description("Metric name to filter metadata for")),

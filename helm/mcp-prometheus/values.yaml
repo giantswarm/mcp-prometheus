@@ -122,6 +122,9 @@ app:
     httpEndpoint: "/mcp"
     # Enable debug logging
     debug: false
+    # Address for the observability HTTP server (/metrics, /healthz, /readyz).
+    # Set to empty string to disable.
+    metricsAddr: ":9091"
 
   # Environment variables for Prometheus configuration
   # These can be used to provide default Prometheus settings
@@ -150,3 +153,8 @@ app:
     #   value: "true"
     # - name: PROMETHEUS_TLS_CA_CERT
     #   value: "/etc/ssl/certs/ca.pem"
+    # OpenTelemetry tracing (no-op by default)
+    # - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    #   value: "http://otel-collector:4318"
+    # - name: OTEL_SERVICE_NAME
+    #   value: "mcp-prometheus"

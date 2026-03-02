@@ -12,6 +12,7 @@ import (
 
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
+	"github.com/giantswarm/mcp-prometheus/internal/observability"
 	"github.com/giantswarm/mcp-prometheus/internal/server"
 	"github.com/giantswarm/mcp-prometheus/internal/tools/prometheus"
 )
@@ -46,6 +47,9 @@ func newServeCmd() *cobra.Command {
 		sseEndpoint     string
 		messageEndpoint string
 		httpEndpoint    string
+
+		// Observability
+		metricsAddr string
 	)
 
 	cmd := &cobra.Command{
@@ -70,7 +74,8 @@ If PROMETHEUS_URL or PROMETHEUS_ORGID environment variables are not set,
 they can be provided as parameters to individual tool calls.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runServe(transport, debugMode,
-				httpAddr, sseEndpoint, messageEndpoint, httpEndpoint)
+				httpAddr, sseEndpoint, messageEndpoint, httpEndpoint,
+				metricsAddr)
 		},
 	}
 
@@ -83,13 +88,15 @@ they can be provided as parameters to individual tool calls.`,
 	cmd.Flags().StringVar(&sseEndpoint, "sse-endpoint", "/sse", "SSE endpoint path (for sse transport)")
 	cmd.Flags().StringVar(&messageEndpoint, "message-endpoint", "/message", "Message endpoint path (for sse transport)")
 	cmd.Flags().StringVar(&httpEndpoint, "http-endpoint", "/mcp", "HTTP endpoint path (for streamable-http transport)")
+	cmd.Flags().StringVar(&metricsAddr, "metrics-addr", ":9091", "Address for the observability HTTP server (/metrics, /healthz, /readyz). Set to empty string to disable.")
 
 	return cmd
 }
 
 // runServe contains the main server logic with support for multiple transports
 func runServe(transport string, debugMode bool,
-	httpAddr, sseEndpoint, messageEndpoint, httpEndpoint string) error {
+	httpAddr, sseEndpoint, messageEndpoint, httpEndpoint string,
+	metricsAddr string) error {
 
 	// Setup graceful shutdown - listen for both SIGINT and SIGTERM
 	shutdownCtx, cancel := signal.NotifyContext(context.Background(),
@@ -125,15 +132,45 @@ func runServe(transport string, debugMode bool,
 		fmt.Printf("  Organization ID: %s\n", config.OrgID)
 	}
 
+	// Initialise observability (metrics + tracing)
+	metrics := observability.NewMetrics()
+	health := &observability.Health{}
+
+	tp, shutdownTracer, err := observability.NewTracerProvider(shutdownCtx)
+	if err != nil {
+		return fmt.Errorf("failed to initialise OTel tracer: %w", err)
+	}
+	defer func() {
+		if err := shutdownTracer(context.Background()); err != nil {
+			log.Printf("Error flushing OTel spans: %v", err)
+		}
+	}()
+
+	inst := observability.NewInstrumentor(metrics, tp)
+
+	// Start observability HTTP server (/metrics, /healthz, /readyz) unless disabled
+	if metricsAddr != "" {
+		mux := observability.NewServer(metrics, health)
+		go func() {
+			fmt.Printf("Observability server starting on %s\n", metricsAddr)
+			if err := observability.RunServer(shutdownCtx, metricsAddr, mux); err != nil {
+				log.Printf("Observability server stopped: %v", err)
+			}
+		}()
+	}
+
 	// Create MCP server
 	mcpSrv := mcpserver.NewMCPServer("mcp-prometheus", rootCmd.Version,
 		mcpserver.WithToolCapabilities(true),
 	)
 
-	// Register Prometheus tools
-	if err := prometheus.RegisterPrometheusTools(mcpSrv, serverContext); err != nil {
+	// Register Prometheus tools with observability instrumentation
+	if err := prometheus.RegisterPrometheusTools(mcpSrv, serverContext, inst.Wrap); err != nil {
 		return fmt.Errorf("failed to register Prometheus tools: %w", err)
 	}
+
+	// Mark server as ready after all tools are registered
+	health.SetReady(true)
 
 	fmt.Printf("Starting MCP Prometheus server with %s transport...\n", transport)
 

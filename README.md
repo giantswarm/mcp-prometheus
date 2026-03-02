@@ -52,6 +52,13 @@ This provides complete access to your Prometheus metrics, queries, and system in
 - [x] **TLS skip-verify** (`PROMETHEUS_TLS_SKIP_VERIFY`) for self-signed certs in dev/staging
 - [x] **Custom CA certificate** (`PROMETHEUS_TLS_CA_CERT`) for private PKI / in-cluster CAs
 
+### 📈 **Observability**
+- [x] **Prometheus metrics** (`/metrics`) — tool call counters and latency histograms, Go runtime and process metrics
+- [x] **Liveness probe** (`/healthz`) — always 200 OK while the process is running
+- [x] **Readiness probe** (`/readyz`) — 200 OK after all tools are registered
+- [x] **OpenTelemetry tracing** — no-op by default; OTLP HTTP export when `OTEL_EXPORTER_OTLP_ENDPOINT` is set
+- [x] **Separate observability port** (`--metrics-addr`, default `:9091`) — keeps metrics/health traffic off the MCP port
+
 ## Installation
 
 ### Pre-built Binaries

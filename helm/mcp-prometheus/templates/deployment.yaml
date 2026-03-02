@@ -48,10 +48,36 @@ spec:
             {{- if .Values.app.server.debug }}
             - --debug
             {{- end }}
+            {{- if .Values.app.server.metricsAddr }}
+            - --metrics-addr={{ .Values.app.server.metricsAddr }}
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080
               protocol: TCP
+            {{- if .Values.app.server.metricsAddr }}
+            - name: metrics
+              containerPort: 9091
+              protocol: TCP
+            {{- end }}
+          {{- if .Values.app.server.metricsAddr }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds | default 10 }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds | default 30 }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold | default 3 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: metrics
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds | default 5 }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold | default 3 }}
+          {{- else }}
           {{- if and .Values.livenessProbe (not (empty .Values.livenessProbe)) }}
           {{- if ne .Values.app.server.transport "stdio" }}
           livenessProbe:
@@ -92,6 +118,7 @@ spec:
             periodSeconds: {{ .Values.readinessProbe.periodSeconds | default 10 }}
             timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds | default 5 }}
             failureThreshold: {{ .Values.readinessProbe.failureThreshold | default 3 }}
+          {{- end }}
           {{- end }}
           {{- end }}
           resources:
