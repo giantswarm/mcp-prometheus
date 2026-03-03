@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Graceful shutdown timeout was `30` (30 nanoseconds) instead of `30 * time.Second`; the SSE and Streamable-HTTP servers now wait up to 30 seconds for in-flight requests to complete before exiting.
+
 ### Added
 
 - Observability HTTP server (`--metrics-addr`, default `:9091`) exposing:
