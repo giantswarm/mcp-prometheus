@@ -48,9 +48,7 @@ spec:
             {{- if .Values.app.server.debug }}
             - --debug
             {{- end }}
-            {{- if .Values.app.server.metricsAddr }}
             - --metrics-addr={{ .Values.app.server.metricsAddr }}
-            {{- end }}
           ports:
             - name: http
               containerPort: 8080
