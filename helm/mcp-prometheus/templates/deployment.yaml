@@ -49,6 +49,9 @@ spec:
             - --debug
             {{- end }}
             - --metrics-addr={{ if .Values.monitoring.enabled }}{{ .Values.app.server.metricsAddr }}{{ end }}
+            {{- if .Values.app.oauth.enabled }}
+            - --enable-oauth
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080
@@ -125,9 +128,20 @@ spec:
           volumeMounts:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if .Values.app.env }}
+          {{- if or .Values.app.env .Values.app.oauth.enabled }}
           env:
+            {{- if .Values.app.oauth.enabled }}
+            - name: MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION
+              value: {{ .Values.app.oauth.allowPublicRegistration | quote }}
+            {{- end }}
+            {{- if .Values.app.env }}
             {{- toYaml .Values.app.env | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.app.oauth.enabled }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.app.oauth.existingSecret | default (printf "%s-oauth" (include "mcp-prometheus.fullname" .)) }}
           {{- end }}
       {{- with .Values.volumes }}
       volumes:

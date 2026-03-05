@@ -13,6 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- OAuth 2.1 Authorization Server via [`giantswarm/mcp-oauth`](https://github.com/giantswarm/mcp-oauth):
+  - PKCE, token rotation, and dynamic client registration (RFC 7591, `--allow-public-registration`)
+  - Backed by Dex OIDC; supports in-memory or Valkey/Redis token storage (`OAUTH_STORAGE`)
+  - `--enable-oauth` flag — SSE and streamable-http transports only
+  - Environment variables: `MCP_OAUTH_ISSUER`, `MCP_OAUTH_ENCRYPTION_KEY` (AES-256-GCM hex),
+    `DEX_ISSUER_URL`, `DEX_CLIENT_ID`, `DEX_CLIENT_SECRET`, `DEX_REDIRECT_URL`
+  - OAuth endpoints at `/oauth/{authorize,callback,token,register,revoke}`
+- Automatic Mimir multi-tenancy via **GrafanaOrganization** CRDs (`observability.giantswarm.io/v1alpha2`):
+  - Resolves Mimir tenant IDs from the authenticated user's Dex groups matched against
+    `spec.rbac.{admins,editors,viewers}`
+  - Auto-injects `X-Scope-OrgID` on every Prometheus/Mimir request
+  - Single tenant: auto-inject; multiple tenants: Mimir fan-out via `|` pipe syntax
+  - 60-second TTL cache per unique group set to reduce Kubernetes API server load
+- Helm chart additions for OAuth and tenancy:
+  - `app.oauth.*` — OAuth configuration with `existingSecret` support, Valkey storage options,
+    and `allowPublicRegistration`
+  - `rbac.yaml` — ClusterRole + ClusterRoleBinding for `grafanaorganizations` (get/list/watch),
+    created only when `app.oauth.enabled: true`
+  - `oauth-secret.yaml` — Kubernetes Secret for `DEX_CLIENT_SECRET`, `MCP_OAUTH_ENCRYPTION_KEY`,
+    and optional `VALKEY_PASSWORD`; hex/length validation in `values.schema.json`
+  - `httproute.yaml` — optional Gateway API `HTTPRoute` for Envoy/Cilium gateway deployments
+  - `values.schema.json` — JSON Schema validation for all new `app.oauth.*` and `gatewayAPI.*` fields
 - Observability HTTP server (`--metrics-addr`, default `:9091`) exposing:
   - `GET /metrics` — Prometheus metrics in OpenMetrics format (Go runtime + process + MCP tool call counters/histograms)
   - `GET /healthz` — liveness probe (always 200 OK while the process is alive)

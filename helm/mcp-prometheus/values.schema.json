@@ -214,8 +214,59 @@
             }
           }
         },
+        "oauth": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "existingSecret": { "type": "string" },
+            "dexClientSecret": { "type": "string" },
+            "encryptionKey": {
+              "type": "string",
+              "pattern": "^([a-fA-F0-9]{64})?$",
+              "description": "AES-256-GCM key: hex-encoded 32 bytes (64 hex chars). Generate with: openssl rand -hex 32"
+            },
+            "allowPublicRegistration": {
+              "type": "boolean",
+              "description": "Allow unauthenticated dynamic client registration. true only for dev/MCP Inspector; false in production."
+            },
+            "storage": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["memory", "valkey"]
+                },
+                "valkey": {
+                  "type": "object",
+                  "properties": {
+                    "url": { "type": "string" },
+                    "password": { "type": "string" },
+                    "tlsEnabled": { "type": "boolean" },
+                    "keyPrefix": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
         "env": {
           "type": "array"
+        }
+      }
+    },
+    "gatewayAPI": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "httpRoute": {
+          "type": "object",
+          "properties": {
+            "parentRefs": { "type": "array" },
+            "hostnames": { "type": "array" },
+            "labels": { "type": "object" },
+            "annotations": { "type": "object" },
+            "rules": { "type": "array" }
+          }
         }
       }
     }

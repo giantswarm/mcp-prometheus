@@ -139,6 +139,39 @@ app:
     # Address for the observability HTTP server (/metrics, /healthz, /readyz).
     metricsAddr: ":9091"
 
+  # OAuth 2.1 configuration (requires --enable-oauth flag and sse/streamable-http transport)
+  oauth:
+    # Enable OAuth 2.1 authentication via Dex OIDC
+    enabled: false
+
+    # Reference an existing Secret instead of creating one.
+    # When set, app.oauth.dexClientSecret and app.oauth.encryptionKey are ignored.
+    # The Secret must contain the keys: DEX_CLIENT_SECRET, MCP_OAUTH_ENCRYPTION_KEY
+    # and optionally VALKEY_PASSWORD.
+    existingSecret: ""
+
+    # Dex OAuth client secret (stored in a K8s Secret)
+    dexClientSecret: ""
+
+    # AES-256-GCM encryption key for token storage (hex-encoded 32 bytes).
+    # Generate with: openssl rand -hex 32
+    encryptionKey: ""
+
+    # Allow unauthenticated dynamic client registration (RFC 7591).
+    # Set to true for MCP Inspector / local development only.
+    # MUST remain false in production.
+    allowPublicRegistration: false
+
+    # Token storage backend
+    storage:
+      # "memory" (default, no persistence) or "valkey"
+      type: memory
+      valkey:
+        url: ""
+        password: ""
+        tlsEnabled: false
+        keyPrefix: "mcp-prometheus:"
+
   # Environment variables for Prometheus configuration
   # These can be used to provide default Prometheus settings
   env: []
@@ -171,3 +204,46 @@ app:
     #   value: "http://otel-collector:4318"
     # - name: OTEL_SERVICE_NAME
     #   value: "mcp-prometheus"
+    # OAuth non-secret env vars (when app.oauth.enabled: true)
+    # - name: MCP_OAUTH_ISSUER
+    #   value: "https://mcp-prometheus.example.com"
+    # - name: OAUTH_STORAGE
+    #   value: "memory"
+    # - name: DEX_ISSUER_URL
+    #   value: "https://dex.example.com"
+    # - name: DEX_CLIENT_ID
+    #   value: "mcp-prometheus"
+    # - name: DEX_REDIRECT_URL
+    #   value: "https://mcp-prometheus.example.com/oauth/callback"
+
+# Gateway API HTTPRoute configuration.
+# Use this instead of (or alongside) ingress when your cluster uses
+# the Kubernetes Gateway API (e.g. Envoy Gateway, Istio, Cilium).
+gatewayAPI:
+  enabled: false
+  httpRoute:
+    # parentRefs is required when gatewayAPI.enabled is true.
+    # Example:
+    #   parentRefs:
+    #     - name: my-gateway
+    #       namespace: gateway-system
+    parentRefs: []
+
+    # Optional hostnames to restrict which hosts this route accepts.
+    hostnames: []
+
+    # Additional labels for the HTTPRoute resource.
+    labels: {}
+
+    # Additional annotations for the HTTPRoute resource.
+    annotations: {}
+
+    # Custom routing rules. If empty, a default rule forwarding all
+    # traffic (PathPrefix: /) to the MCP service is created.
+    # Example — separate MCP and OAuth paths:
+    #   rules:
+    #     - matches:
+    #         - path:
+    #             type: PathPrefix
+    #             value: /
+    rules: []

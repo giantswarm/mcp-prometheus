@@ -27,6 +27,14 @@ type PrometheusConfig struct {
 	TLSCACert     string // PROMETHEUS_TLS_CA_CERT — path to a PEM-encoded CA certificate file
 }
 
+// TenancyResolver resolves Mimir tenant IDs from a set of authenticated user
+// groups.  It is implemented by [tenancy.Resolver] and exposed here as an
+// interface to avoid a direct import cycle between the server and tenancy
+// packages.
+type TenancyResolver interface {
+	TenantsForGroups(ctx context.Context, groups []string) ([]string, error)
+}
+
 // ServerContext holds the server configuration and shared resources
 type ServerContext struct {
 	ctx    context.Context
@@ -39,6 +47,10 @@ type ServerContext struct {
 
 	// Prometheus configuration
 	prometheusConfig PrometheusConfig
+
+	// OAuth / tenancy (optional; nil when disabled)
+	oauthEnabled    bool
+	tenancyResolver TenancyResolver
 }
 
 // ServerOption is a functional option for configuring ServerContext
@@ -62,6 +74,23 @@ func WithLogger(logger Logger) ServerOption {
 func WithPrometheusConfig(config PrometheusConfig) ServerOption {
 	return func(sc *ServerContext) {
 		sc.prometheusConfig = config
+	}
+}
+
+// WithOAuthEnabled marks the server as running behind OAuth 2.1 middleware.
+// When true, tool handlers will attempt to extract user info from the request
+// context to perform tenancy resolution.
+func WithOAuthEnabled(enabled bool) ServerOption {
+	return func(sc *ServerContext) {
+		sc.oauthEnabled = enabled
+	}
+}
+
+// WithTenancyResolver attaches a tenancy resolver used by tools to map
+// authenticated user groups to Mimir X-Scope-OrgID values.
+func WithTenancyResolver(r TenancyResolver) ServerOption {
+	return func(sc *ServerContext) {
+		sc.tenancyResolver = r
 	}
 }
 
@@ -126,6 +155,21 @@ func (sc *ServerContext) PrometheusConfig() PrometheusConfig {
 	sc.mutex.RLock()
 	defer sc.mutex.RUnlock()
 	return sc.prometheusConfig
+}
+
+// IsOAuthEnabled returns whether OAuth 2.1 middleware is active.
+func (sc *ServerContext) IsOAuthEnabled() bool {
+	sc.mutex.RLock()
+	defer sc.mutex.RUnlock()
+	return sc.oauthEnabled
+}
+
+// TenancyResolver returns the configured tenancy resolver, or nil when tenancy
+// is disabled.
+func (sc *ServerContext) TenancyResolver() TenancyResolver {
+	sc.mutex.RLock()
+	defer sc.mutex.RUnlock()
+	return sc.tenancyResolver
 }
 
 // SetDebugMode dynamically sets whether debug logging is enabled

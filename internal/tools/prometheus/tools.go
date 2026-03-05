@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"strings"
 
+	mcpoauth "github.com/giantswarm/mcp-oauth"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
 	"github.com/giantswarm/mcp-prometheus/internal/server"
+	"github.com/giantswarm/mcp-prometheus/internal/tenancy"
 )
 
 // Constants for result truncation
@@ -100,7 +102,7 @@ func withDynamicPrometheusClient(handler PrometheusHandler, client *Client, sc *
 		params := extractParams(request)
 
 		// Create client with dynamic parameters if provided
-		dynamicClient, err := createClientFromParams(params, client, sc)
+		dynamicClient, err := createClientFromParams(ctx, params, client, sc)
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
@@ -271,12 +273,50 @@ func extractStringArray(params map[string]interface{}, key string) []string {
 	return nil
 }
 
-// Helper function to create a client with dynamic parameters
-func createClientFromParams(params map[string]interface{}, defaultClient *Client, sc *server.ServerContext) (*Client, error) {
-	prometheusURL, hasURL := params["prometheus_url"].(string)
-	orgID, hasOrgID := params["org_id"].(string)
+// resolveTenantOrgID determines the effective X-Scope-OrgID for the request.
+//
+// When OAuth is enabled and a tenancy resolver is available it:
+//  1. Extracts user groups from the token claims in ctx.
+//  2. Resolves the allowed Mimir tenants via GrafanaOrganization CRDs.
+//  3. Validates (or auto-injects) the org_id using [tenancy.SelectOrgID].
+//
+// When OAuth is disabled, the explicit override is returned verbatim (may be "").
+func resolveTenantOrgID(ctx context.Context, sc *server.ServerContext, explicit string) (string, error) {
+	if !sc.IsOAuthEnabled() {
+		return explicit, nil
+	}
 
-	// If neither parameter is provided, use default client
+	resolver := sc.TenancyResolver()
+	if resolver == nil {
+		return explicit, nil
+	}
+
+	userInfo, ok := mcpoauth.UserInfoFromContext(ctx)
+	if !ok {
+		return "", fmt.Errorf("tenancy: no user info in context; token validation may have been skipped")
+	}
+
+	tenants, err := resolver.TenantsForGroups(ctx, userInfo.Groups)
+	if err != nil {
+		return "", fmt.Errorf("tenancy: resolve tenants: %w", err)
+	}
+
+	return tenancy.SelectOrgID(tenants, explicit)
+}
+
+// createClientFromParams creates a Prometheus client from request parameters,
+// applying OAuth tenancy resolution for the X-Scope-OrgID header when enabled.
+func createClientFromParams(ctx context.Context, params map[string]interface{}, defaultClient *Client, sc *server.ServerContext) (*Client, error) {
+	prometheusURL, hasURL := params["prometheus_url"].(string)
+	explicitOrgID, _ := params["org_id"].(string)
+
+	orgID, err := resolveTenantOrgID(ctx, sc, explicitOrgID)
+	if err != nil {
+		return nil, err
+	}
+	hasOrgID := orgID != ""
+
+	// If neither parameter is provided and OAuth didn't inject an org ID, use default client
 	if !hasURL && !hasOrgID {
 		if defaultClient != nil && defaultClient.client != nil {
 			return defaultClient, nil
@@ -293,10 +333,10 @@ func createClientFromParams(params map[string]interface{}, defaultClient *Client
 		sc.Logger().Debug("Overriding Prometheus URL from parameter", "url", prometheusURL)
 	}
 
-	// Override OrgID if provided
-	if hasOrgID && orgID != "" {
+	// Set the resolved org ID (from tenancy or explicit override)
+	if hasOrgID {
 		config.OrgID = orgID
-		sc.Logger().Debug("Overriding Prometheus OrgID from parameter", "orgID", orgID)
+		sc.Logger().Debug("Setting Prometheus OrgID", "orgID", orgID)
 	}
 
 	// Validate that we have a URL
