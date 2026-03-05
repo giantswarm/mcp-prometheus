@@ -100,6 +100,20 @@ volumeMounts:
 ciliumNetworkPolicy:
   enabled: true
 
+# Monitoring configuration
+monitoring:
+  # Enable the observability HTTP server (/metrics, /healthz, /readyz),
+  # the Service metrics port, and the ServiceMonitor.
+  enabled: true
+  serviceMonitor:
+    # Create a ServiceMonitor for Prometheus Operator auto-discovery.
+    # Requires monitoring.enabled and the Prometheus Operator CRDs to be installed.
+    enabled: false
+    # interval: 30s
+    # scrapeTimeout: 10s
+    # Additional labels to add to the ServiceMonitor (e.g. to match a Prometheus selector).
+    labels: {}
+
 nodeSelector: {}
 
 tolerations: []
@@ -123,7 +137,6 @@ app:
     # Enable debug logging
     debug: false
     # Address for the observability HTTP server (/metrics, /healthz, /readyz).
-    # Set to empty string to disable.
     metricsAddr: ":9091"
 
   # OAuth 2.1 configuration (requires --enable-oauth flag and sse/streamable-http transport)
