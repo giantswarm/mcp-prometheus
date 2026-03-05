@@ -99,6 +99,8 @@ volumeMounts:
 
 ciliumNetworkPolicy:
   enabled: true
+  labels: {}
+  annotations: {}
 
 # Monitoring configuration
 monitoring:

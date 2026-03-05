@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -42,6 +44,7 @@ type Resolver struct {
 	client dynamic.Interface
 	mu     sync.Mutex
 	cache  map[string]cacheEntry
+	sf     singleflight.Group
 }
 
 // NewInClusterResolver creates a Resolver using in-cluster service account credentials.
@@ -89,10 +92,13 @@ func (r *Resolver) TenantsForGroups(ctx context.Context, groups []string) ([]str
 	}
 	r.mu.Unlock()
 
-	tenants, err := r.resolve(ctx, groups)
+	v, err, _ := r.sf.Do(key, func() (interface{}, error) {
+		return r.resolve(ctx, groups)
+	})
 	if err != nil {
 		return nil, err
 	}
+	tenants := v.([]string)
 
 	r.mu.Lock()
 	r.cache[key] = cacheEntry{tenants: tenants, cachedAt: time.Now()}
