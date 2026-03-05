@@ -172,6 +172,21 @@ app:
         tlsEnabled: false
         keyPrefix: "mcp-prometheus:"
 
+    # Trusted Audiences for SSO Token Forwarding
+    # When users connect through upstream aggregators (like muster), they may have
+    # already authenticated. This setting allows mcp-prometheus to accept tokens
+    # issued to those trusted upstream services, enabling Single Sign-On (SSO).
+    #
+    # How it works:
+    #   - When a trusted audience is detected, the token is validated via JWT/JWKS
+    #   - The IdP's JWKS endpoint is fetched to verify the token signature
+    #   - Tokens MUST still be from the configured issuer (Dex)
+    #   - Only explicitly listed client IDs are trusted
+    #
+    # Example: ["muster-client", "my-aggregator-client"]
+    # Default: [] (only accept tokens issued directly to this server's client_id)
+    trustedAudiences: []
+
   # Tenancy resolution configuration (only relevant when app.oauth.enabled: true).
   tenancy:
     # Resolution mode.

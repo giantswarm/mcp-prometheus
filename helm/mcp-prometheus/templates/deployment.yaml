@@ -138,6 +138,10 @@ spec:
             {{- if .Values.app.oauth.enabled }}
             - name: MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION
               value: {{ .Values.app.oauth.allowPublicRegistration | quote }}
+            {{- if .Values.app.oauth.trustedAudiences }}
+            - name: OAUTH_TRUSTED_AUDIENCES
+              value: {{ .Values.app.oauth.trustedAudiences | join "," | quote }}
+            {{- end }}
             {{- end }}
             {{- if $hasStaticGroupMap }}
             - name: TENANCY_STATIC_GROUP_MAP
