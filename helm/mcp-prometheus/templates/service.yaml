@@ -11,5 +11,11 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    {{- if .Values.monitoring.enabled }}
+    - port: {{ regexFind "[0-9]+$" .Values.app.server.metricsAddr | int }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+    {{- end }}
   selector:
-    {{- include "mcp-prometheus.selectorLabels" . | nindent 4 }} 
+    {{- include "mcp-prometheus.selectorLabels" . | nindent 4 }}

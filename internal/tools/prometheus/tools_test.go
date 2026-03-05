@@ -26,12 +26,9 @@ func (l *TestLogger) Error(msg string, args ...interface{}) {}
 func TestRegisterPrometheusTools(t *testing.T) {
 	s := mcpserver.NewMCPServer("test", "1.0.0")
 
-	// Create a mock server context
 	ctx := context.Background()
 	sc, err := server.NewServerContext(ctx,
-		server.WithPrometheusConfig(server.PrometheusConfig{
-			URL: "http://localhost:9090",
-		}),
+		server.WithPrometheusConfig(server.PrometheusConfig{URL: "http://localhost:9090"}),
 		server.WithLogger(&TestLogger{}),
 	)
 	if err != nil {
@@ -39,9 +36,66 @@ func TestRegisterPrometheusTools(t *testing.T) {
 	}
 	defer sc.Shutdown()
 
-	err = RegisterPrometheusTools(s, sc)
-	if err != nil {
+	if err := RegisterPrometheusTools(s, sc); err != nil {
 		t.Fatalf("Failed to register tools: %v", err)
+	}
+}
+
+func TestRegisterPrometheusToolsWithMiddleware(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/query" {
+			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+				"status": "success",
+				"data":   map[string]interface{}{"resultType": "vector", "result": []interface{}{}},
+			})
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer mockServer.Close()
+
+	ctx := context.Background()
+	sc, err := server.NewServerContext(ctx,
+		server.WithPrometheusConfig(server.PrometheusConfig{URL: mockServer.URL}),
+		server.WithLogger(&TestLogger{}),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create server context: %v", err)
+	}
+	defer sc.Shutdown()
+
+	// Middleware that records the tool name for every invocation through the
+	// server's dispatch path.
+	var called []string
+	mw := ToolMiddleware(func(name string, next func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			called = append(called, name)
+			return next(ctx, req)
+		}
+	})
+
+	s := mcpserver.NewMCPServer("test", "1.0.0", mcpserver.WithToolCapabilities(true))
+	if err := RegisterPrometheusTools(s, sc, mw); err != nil {
+		t.Fatalf("RegisterPrometheusTools: %v", err)
+	}
+
+	// Dispatch through HandleMessage so we exercise the actual registered path.
+	msg := []byte(`{
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "tools/call",
+		"params": {
+			"name": "execute_query",
+			"arguments": {"query": "up", "prometheus_url": "` + mockServer.URL + `"}
+		}
+	}`)
+	s.HandleMessage(ctx, msg)
+
+	if len(called) == 0 {
+		t.Fatal("expected middleware to be invoked via server dispatch, but called is empty")
+	}
+	if called[0] != "execute_query" {
+		t.Errorf("expected first middleware call for execute_query, got %q", called[0])
 	}
 }
 

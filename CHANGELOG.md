@@ -7,17 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Graceful shutdown timeout was `30` (30 nanoseconds) instead of `30 * time.Second`; the SSE and Streamable-HTTP servers now wait up to 30 seconds for in-flight requests to complete before exiting.
+
+### Added
+
+- Observability HTTP server (`--metrics-addr`, default `:9091`) exposing:
+  - `GET /metrics` — Prometheus metrics in OpenMetrics format (Go runtime + process + MCP tool call counters/histograms)
+  - `GET /healthz` — liveness probe (always 200 OK while the process is alive)
+  - `GET /readyz` — readiness probe (200 OK after all tools are registered, 503 before)
+- `mcp_prometheus_tool_calls_total{tool,status}` counter and `mcp_prometheus_tool_call_duration_seconds{tool}` histogram for every MCP tool invocation
+- OpenTelemetry tracing: no-op by default; set `OTEL_EXPORTER_OTLP_ENDPOINT` to enable OTLP HTTP export and `OTEL_SERVICE_NAME` to override the service name (default: `mcp-prometheus`)
+- `ToolMiddleware` extension point in `RegisterPrometheusTools` for injecting custom cross-cutting concerns (metrics, tracing, rate-limiting, etc.)
+
+## [0.0.11] - 2025-07-25
+
 ### Added
 
 - TLS support for the Prometheus/Mimir client:
   - `PROMETHEUS_TLS_SKIP_VERIFY=true` — disable TLS certificate verification (not recommended for production)
   - `PROMETHEUS_TLS_CA_CERT=<path>` — path to a PEM-encoded CA certificate file for custom/private PKI
 - `check_ready` tool: check whether the Prometheus or Mimir server is ready to serve traffic (`GET /-/ready`); compatible with both Prometheus and Mimir
-
-## [0.0.11] - 2025-07-25
-
-### Added
-
 - Initial implementation of MCP (Model Context Protocol) server for Prometheus
 - Comprehensive Helm chart for Kubernetes deployment
 - Docker container setup with security best practices
@@ -37,11 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Basic authentication (username/password)
   - Bearer token authentication
   - Multi-tenant configurations (Cortex/Mimir/Thanos)
-- Intelligent MCP-specific health probes
 - CiliumNetworkPolicy for network security
 - Comprehensive documentation and usage examples
 
 ### Security
+
 - Non-root container execution (UID 1000)
 - Read-only root filesystem
 - Dropped all capabilities
@@ -50,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Network policies for traffic isolation
 
 ### Infrastructure
+
 - Helm chart following Giant Swarm standards
 - Values schema validation (JSON Schema)
 - Support for horizontal pod autoscaling
@@ -57,4 +69,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ConfigMap and Secret integration for configuration
 - Resource limits and requests properly configured
 
-[Unreleased]: https://github.com/giantswarm/mcp-prometheus/compare/v0.0.0...HEAD
+[Unreleased]: https://github.com/giantswarm/mcp-prometheus/compare/v0.0.11...HEAD
+[0.0.11]: https://github.com/giantswarm/mcp-prometheus/compare/v0.0.0...v0.0.11
