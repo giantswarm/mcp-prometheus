@@ -1,66 +1,30 @@
 {{- if .Values.ciliumNetworkPolicy.enabled }}
-apiVersion: "cilium.io/v2"
+apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: {{ include "mcp-prometheus.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "mcp-prometheus.labels" . | nindent 4 }}
+    {{- with .Values.ciliumNetworkPolicy.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.ciliumNetworkPolicy.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
+  egress:
+  - toEntities:
+    - cluster
+  {{- if .Values.app.oauth.enabled }}
+  - toEntities:
+    - world
+  {{- end }}
+  ingress:
+  - fromEntities:
+    - cluster
   endpointSelector:
     matchLabels:
       {{- include "mcp-prometheus.selectorLabels" . | nindent 6 }}
-  ingress:
-    # Allow ingress on the MCP HTTP port from any endpoint in the cluster.
-    - fromEndpoints:
-        - matchLabels: {}
-      toPorts:
-        - ports:
-            - port: "8080"
-              protocol: TCP
-    {{- if .Values.monitoring.enabled }}
-    # Allow Prometheus scrapers to reach the metrics/health port.
-    - fromEndpoints:
-        - matchLabels: {}
-      toPorts:
-        - ports:
-            - port: {{ regexFind "[0-9]+$" .Values.app.server.metricsAddr | quote }}
-              protocol: TCP
-    {{- end }}
-  egress:
-    # Allow DNS resolution
-    - toEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: kube-system
-            k8s:app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
-          rules:
-            dns:
-              - matchPattern: "*"
-    # Allow accessing Prometheus servers (HTTP/HTTPS)
-    - toPorts:
-        - ports:
-            - port: "9090"
-              protocol: TCP
-            - port: "80"
-              protocol: TCP
-            - port: "443"
-              protocol: TCP
-            - port: "8080"
-              protocol: TCP
-            - port: "3000"
-              protocol: TCP
-            - port: "9000"
-              protocol: TCP
-    # Allow accessing Kubernetes API server for service discovery if needed
-    - toServices:
-        - k8sService:
-            serviceName: kubernetes
-            namespace: default
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
 {{- end }}
