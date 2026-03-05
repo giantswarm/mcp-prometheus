@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	mcpoauth "github.com/giantswarm/mcp-oauth"
 	"github.com/giantswarm/mcp-oauth/providers"
@@ -61,11 +62,17 @@ type Config struct {
 	// DexRedirectURL is the callback URL registered in Dex,
 	// e.g. "https://mcp.example.com/oauth/callback".
 	DexRedirectURL string
+
+	// TrustedAudiences lists OAuth client IDs whose tokens are accepted for SSO.
+	// When an upstream aggregator (like muster) forwards a user's ID token,
+	// mcp-prometheus accepts it if the token's audience matches any entry here.
+	// Tokens must still be from the configured issuer (Dex) and cryptographically valid.
+	TrustedAudiences []string
 }
 
 // ConfigFromEnv builds a Config by reading the standard environment variables.
 func ConfigFromEnv() Config {
-	return Config{
+	cfg := Config{
 		Issuer:                  os.Getenv("MCP_OAUTH_ISSUER"),
 		EncryptionKey:           os.Getenv("MCP_OAUTH_ENCRYPTION_KEY"),
 		AllowPublicRegistration: os.Getenv("MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION") == "true",
@@ -79,6 +86,14 @@ func ConfigFromEnv() Config {
 		DexClientSecret:         os.Getenv("DEX_CLIENT_SECRET"),
 		DexRedirectURL:          os.Getenv("DEX_REDIRECT_URL"),
 	}
+	if v := os.Getenv("OAUTH_TRUSTED_AUDIENCES"); v != "" {
+		for _, a := range strings.Split(v, ",") {
+			if a = strings.TrimSpace(a); a != "" {
+				cfg.TrustedAudiences = append(cfg.TrustedAudiences, a)
+			}
+		}
+	}
+	return cfg
 }
 
 // NewHandler initialises the mcp-oauth Handler from the given Config.
@@ -123,6 +138,7 @@ func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cf
 		Issuer:                        cfg.Issuer,
 		AllowPublicClientRegistration: cfg.AllowPublicRegistration,
 		AllowRefreshTokenRotation:     true,
+		TrustedAudiences:              cfg.TrustedAudiences,
 	}
 
 	srv, err := mcpoauth.NewServer(provider, store, store, store, serverCfg, logger)

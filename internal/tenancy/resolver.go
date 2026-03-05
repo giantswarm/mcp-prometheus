@@ -191,7 +191,7 @@ func cacheKey(groups []string) string {
 //     joined with "|" (Mimir will query all of them).
 func SelectOrgID(tenants []string, override string) (string, error) {
 	if len(tenants) == 0 {
-		return "", fmt.Errorf("tenancy: user is not a member of any GrafanaOrganization; access denied")
+		return "", fmt.Errorf("tenancy: user has no access to any tenant; access denied")
 	}
 
 	allowed := make(map[string]struct{}, len(tenants))
