@@ -48,9 +48,7 @@ spec:
             {{- if .Values.app.server.debug }}
             - --debug
             {{- end }}
-            {{- if .Values.app.server.metricsAddr }}
-            - --metrics-addr={{ .Values.app.server.metricsAddr }}
-            {{- end }}
+            - --metrics-addr={{ if .Values.monitoring.enabled }}{{ .Values.app.server.metricsAddr }}{{ end }}
             {{- if .Values.app.oauth.enabled }}
             - --enable-oauth
             {{- end }}
@@ -58,12 +56,12 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
-            {{- if .Values.app.server.metricsAddr }}
+            {{- if .Values.monitoring.enabled }}
             - name: metrics
-              containerPort: {{ trimPrefix ":" .Values.app.server.metricsAddr | int }}
+              containerPort: {{ regexFind "[0-9]+$" .Values.app.server.metricsAddr | int }}
               protocol: TCP
             {{- end }}
-          {{- if .Values.app.server.metricsAddr }}
+          {{- if .Values.monitoring.enabled }}
           livenessProbe:
             httpGet:
               path: /healthz

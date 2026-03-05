@@ -22,6 +22,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.26'  # Match the version used in auto-release
+          cache: true  # Cache Go modules and build cache
 
       - name: Install Python for yamllint
         uses: actions/setup-python@v6

@@ -42,8 +42,9 @@ func Listen(addr string) (net.Listener, error) {
 //	go observability.Serve(ctx, ln, handler)
 func Serve(ctx context.Context, ln net.Listener, handler http.Handler) error {
 	srv := &http.Server{
-		Handler:     handler,
-		ReadTimeout: 10 * time.Second,
+		Handler:      handler,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 30 * time.Second,
 	}
 
 	errCh := make(chan error, 1)

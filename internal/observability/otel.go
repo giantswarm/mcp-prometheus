@@ -3,6 +3,7 @@ package observability
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 
 	"go.opentelemetry.io/otel"
@@ -46,7 +47,9 @@ func NewTracerProvider(ctx context.Context) (trace.TracerProvider, func(context.
 		resource.WithAttributes(semconv.ServiceName(serviceName)),
 	)
 	if err != nil {
-		// Non-fatal: fall back to the default resource.
+		// Non-fatal: fall back to the default resource, but warn so the
+		// operator knows their OTel environment variables may be misconfigured.
+		log.Printf("[WARN] OTel resource creation failed, using defaults: %v", err)
 		res = resource.Default()
 	}
 
