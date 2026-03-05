@@ -3,7 +3,7 @@ module github.com/giantswarm/mcp-prometheus
 go 1.25.0
 
 require (
-	github.com/giantswarm/mcp-oauth v0.2.71
+	github.com/giantswarm/mcp-oauth v0.2.72
 	github.com/mark3labs/mcp-go v0.44.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.67.5
