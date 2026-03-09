@@ -178,14 +178,14 @@ func (c *Client) ExecuteQuery(query string, timeParam string) (*QueryResult, err
 	var err error
 
 	if timeParam != "" {
-		// Parse the time parameter
+		// Parse the time parameter — try RFC3339 first, then Unix seconds.
 		queryTime, err = time.Parse(time.RFC3339, timeParam)
 		if err != nil {
-			// Try parsing as Unix timestamp
-			queryTime = time.Unix(0, 0)
-			if _, parseErr := fmt.Sscanf(timeParam, "%d", &queryTime); parseErr != nil {
-				return nil, fmt.Errorf("invalid time parameter: %w", err)
+			ts, parseErr := strconv.ParseInt(timeParam, 10, 64)
+			if parseErr != nil {
+				return nil, fmt.Errorf("invalid time parameter %q: not RFC3339 and not a Unix timestamp", timeParam)
 			}
+			queryTime = time.Unix(ts, 0)
 		}
 	} else {
 		queryTime = time.Now()
@@ -219,14 +219,14 @@ func (c *Client) ExecuteQueryWithOptions(query string, timeParam string, options
 	var err error
 
 	if timeParam != "" {
-		// Parse the time parameter
+		// Parse the time parameter — try RFC3339 first, then Unix seconds.
 		queryTime, err = time.Parse(time.RFC3339, timeParam)
 		if err != nil {
-			// Try parsing as Unix timestamp
-			queryTime = time.Unix(0, 0)
-			if _, parseErr := fmt.Sscanf(timeParam, "%d", &queryTime); parseErr != nil {
-				return nil, fmt.Errorf("invalid time parameter: %w", err)
+			ts, parseErr := strconv.ParseInt(timeParam, 10, 64)
+			if parseErr != nil {
+				return nil, fmt.Errorf("invalid time parameter %q: not RFC3339 and not a Unix timestamp", timeParam)
 			}
+			queryTime = time.Unix(ts, 0)
 		}
 	} else {
 		queryTime = time.Now()
