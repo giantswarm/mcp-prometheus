@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -949,13 +950,44 @@ type HealthStatus struct {
 	Message    string `json:"message"`
 }
 
-// CheckReady checks whether the Prometheus/Mimir server is ready to serve traffic (GET /-/ready)
+// CheckReady checks whether the Prometheus/Mimir server is ready to serve traffic.
+//
+// It first tries GET /-/ready against the scheme+host of the configured URL
+// (the Prometheus standard endpoint). If that returns 404 — as happens with
+// the Mimir nginx gateway, which only exposes GET /ready at the root — it
+// falls back to GET /ready on the same base URL.
+//
+// Using the scheme+host (not the full path) avoids the common misconfiguration
+// where PROMETHEUS_URL is set to http://mimir-gateway/prometheus and appending
+// /-/ready produces .../prometheus/-/ready, which the Mimir gateway has no
+// route for.
 func (c *Client) CheckReady(ctx context.Context) (*HealthStatus, error) {
 	if c.httpClient == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
-	url := strings.TrimRight(c.config.URL, "/") + "/-/ready"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+
+	parsed, err := url.Parse(c.config.URL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse Prometheus URL: %w", err)
+	}
+	base := parsed.Scheme + "://" + parsed.Host
+
+	status, err := c.doReadyCheck(ctx, base+"/-/ready")
+	if err != nil {
+		return nil, err
+	}
+	// 404 means the Prometheus-standard endpoint doesn't exist; try the Mimir
+	// nginx gateway endpoint instead.
+	if status.StatusCode == http.StatusNotFound {
+		c.logger.Debug("/-/ready returned 404, falling back to /ready (Mimir gateway)")
+		return c.doReadyCheck(ctx, base+"/ready")
+	}
+	return status, nil
+}
+
+// doReadyCheck performs a single GET request to the given readiness URL.
+func (c *Client) doReadyCheck(ctx context.Context, readyURL string) (*HealthStatus, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, readyURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create readiness check request: %w", err)
 	}
