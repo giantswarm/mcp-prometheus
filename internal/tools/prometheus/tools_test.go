@@ -451,7 +451,7 @@ func TestHandleCheckReady(t *testing.T) {
 			name:        "not ready",
 			statusCode:  http.StatusServiceUnavailable,
 			body:        "not yet",
-			wantIsError: false,
+			wantIsError: true,
 			wantText:    "not ready",
 		},
 	}
