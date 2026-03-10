@@ -292,6 +292,10 @@
               },
               "default": [],
               "description": "OAuth client IDs whose tokens are accepted for SSO token forwarding (e.g., from muster)"
+            },
+            "allowPrivateURLs": {
+              "type": "boolean",
+              "description": "Allow OIDC discovery against Dex instances whose hostname resolves to a private/RFC-1918 IP. Required when Dex runs on a private management cluster. Bypasses SSRF protection in the HTTP transport layer only — TLS is still enforced."
             }
           }
         },
