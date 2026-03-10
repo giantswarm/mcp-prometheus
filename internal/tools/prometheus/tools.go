@@ -327,8 +327,11 @@ func createClientFromParams(ctx context.Context, params map[string]interface{}, 
 	// Start with environment config to inherit authentication
 	config := sc.PrometheusConfig()
 
-	// Override URL if provided
+	// Override URL if provided (validated to prevent SSRF via scheme abuse).
 	if hasURL && prometheusURL != "" {
+		if err := validatePrometheusURL(prometheusURL); err != nil {
+			return nil, err
+		}
 		config.URL = prometheusURL
 		sc.Logger().Debug("Overriding Prometheus URL from parameter", "url", prometheusURL)
 	}
