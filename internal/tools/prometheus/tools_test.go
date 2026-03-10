@@ -432,6 +432,33 @@ func TestCheckReadyConnectionError(t *testing.T) {
 	}
 }
 
+// TestCheckReadyMimirFallback verifies that when /-/ready returns 404
+// (Mimir nginx gateway has no such route), CheckReady falls back to /ready.
+func TestCheckReadyMimirFallback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/-/ready":
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("not found")) //nolint:errcheck
+		case "/ready":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ready")) //nolint:errcheck
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewClient(server.PrometheusConfig{URL: srv.URL + "/prometheus"}, &TestLogger{})
+	status, err := client.CheckReady(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !status.Ready {
+		t.Errorf("expected Ready=true after fallback, got false (status %d: %s)", status.StatusCode, status.Message)
+	}
+}
+
 func TestHandleCheckReady(t *testing.T) {
 	tests := []struct {
 		name        string
