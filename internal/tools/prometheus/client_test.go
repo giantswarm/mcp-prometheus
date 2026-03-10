@@ -1,6 +1,7 @@
 package prometheus
 
 import (
+	"context"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
@@ -36,7 +37,7 @@ func TestNewClientDefaultTransport(t *testing.T) {
 		t.Fatal("expected client to be initialized")
 	}
 
-	if _, err := client.ExecuteQuery("up", ""); err != nil {
+	if _, err := client.ExecuteQuery(context.Background(), "up", ""); err != nil {
 		t.Errorf("unexpected error with plain HTTP client: %v", err)
 	}
 }
@@ -56,7 +57,7 @@ func TestNewClientTLSSkipVerify(t *testing.T) {
 		t.Fatal("expected client to be initialized with TLSSkipVerify")
 	}
 
-	if _, err := client.ExecuteQuery("up", ""); err != nil {
+	if _, err := client.ExecuteQuery(context.Background(), "up", ""); err != nil {
 		t.Errorf("unexpected error with TLSSkipVerify: %v", err)
 	}
 }
@@ -89,7 +90,7 @@ func TestNewClientCustomCA(t *testing.T) {
 		t.Fatal("expected client to be initialized with custom CA")
 	}
 
-	if _, err := client.ExecuteQuery("up", ""); err != nil {
+	if _, err := client.ExecuteQuery(context.Background(), "up", ""); err != nil {
 		t.Errorf("unexpected error with custom CA: %v", err)
 	}
 }
@@ -156,7 +157,7 @@ func TestNewClientTLSSkipVerifyWithCustomCA(t *testing.T) {
 		t.Fatal("expected client to be initialized with TLSSkipVerify+CustomCA")
 	}
 
-	if _, err := client.ExecuteQuery("up", ""); err != nil {
+	if _, err := client.ExecuteQuery(context.Background(), "up", ""); err != nil {
 		t.Errorf("unexpected error with TLSSkipVerify+CustomCA: %v", err)
 	}
 }
@@ -175,7 +176,7 @@ func TestNewClientTLSUntrustedException(t *testing.T) {
 		t.Fatal("expected client struct to be created (URL is non-empty)")
 	}
 
-	_, err := client.ExecuteQuery("up", "")
+	_, err := client.ExecuteQuery(context.Background(), "up", "")
 	if err == nil {
 		t.Error("expected TLS error when connecting without a trusted CA, got nil")
 	}
