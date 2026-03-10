@@ -169,7 +169,7 @@ type QueryResult struct {
 }
 
 // ExecuteQuery executes an instant PromQL query
-func (c *Client) ExecuteQuery(query string, timeParam string) (*QueryResult, error) {
+func (c *Client) ExecuteQuery(ctx context.Context, query string, timeParam string) (*QueryResult, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
@@ -191,7 +191,7 @@ func (c *Client) ExecuteQuery(query string, timeParam string) (*QueryResult, err
 		queryTime = time.Now()
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	result, warnings, err := c.client.Query(ctx, query, queryTime)
@@ -210,7 +210,7 @@ func (c *Client) ExecuteQuery(query string, timeParam string) (*QueryResult, err
 }
 
 // ExecuteQueryWithOptions executes an instant PromQL query with additional options
-func (c *Client) ExecuteQueryWithOptions(query string, timeParam string, options QueryOptions) (*QueryResult, error) {
+func (c *Client) ExecuteQueryWithOptions(ctx context.Context, query string, timeParam string, options QueryOptions) (*QueryResult, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
@@ -240,7 +240,7 @@ func (c *Client) ExecuteQueryWithOptions(query string, timeParam string, options
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	// Build API options
@@ -278,7 +278,7 @@ func (c *Client) ExecuteQueryWithOptions(query string, timeParam string, options
 }
 
 // ExecuteRangeQuery executes a range PromQL query
-func (c *Client) ExecuteRangeQuery(query, start, end, step string) (*QueryResult, error) {
+func (c *Client) ExecuteRangeQuery(ctx context.Context, query, start, end, step string) (*QueryResult, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
@@ -301,7 +301,7 @@ func (c *Client) ExecuteRangeQuery(query, start, end, step string) (*QueryResult
 		return nil, fmt.Errorf("invalid step duration: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
 	queryRange := v1.Range{
@@ -326,7 +326,7 @@ func (c *Client) ExecuteRangeQuery(query, start, end, step string) (*QueryResult
 }
 
 // ExecuteRangeQueryWithOptions executes a range PromQL query with additional options
-func (c *Client) ExecuteRangeQueryWithOptions(query, start, end, step string, options QueryOptions) (*QueryResult, error) {
+func (c *Client) ExecuteRangeQueryWithOptions(ctx context.Context, query, start, end, step string, options QueryOptions) (*QueryResult, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
@@ -357,7 +357,7 @@ func (c *Client) ExecuteRangeQueryWithOptions(query, start, end, step string, op
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	queryRange := v1.Range{
@@ -409,8 +409,8 @@ type QueryOptions struct {
 }
 
 // ListMetrics lists all available metric names
-func (c *Client) ListMetrics() ([]string, error) {
-	return c.ListMetricsWithOptions(ListMetricsOptions{})
+func (c *Client) ListMetrics(ctx context.Context) ([]string, error) {
+	return c.ListMetricsWithOptions(ctx, ListMetricsOptions{})
 }
 
 // ListMetricsOptions holds optional parameters for listing metrics
@@ -421,12 +421,12 @@ type ListMetricsOptions struct {
 }
 
 // ListMetricsWithOptions lists all available metric names with filtering options
-func (c *Client) ListMetricsWithOptions(options ListMetricsOptions) ([]string, error) {
+func (c *Client) ListMetricsWithOptions(ctx context.Context, options ListMetricsOptions) ([]string, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	var startTime, endTime time.Time
@@ -468,8 +468,8 @@ func (c *Client) ListMetricsWithOptions(options ListMetricsOptions) ([]string, e
 type MetricMetadata map[string]interface{}
 
 // GetMetricMetadata gets metadata for a specific metric
-func (c *Client) GetMetricMetadata(metric string) (MetricMetadata, error) {
-	return c.GetMetricMetadataWithOptions(metric, MetricMetadataOptions{})
+func (c *Client) GetMetricMetadata(ctx context.Context, metric string) (MetricMetadata, error) {
+	return c.GetMetricMetadataWithOptions(ctx, metric, MetricMetadataOptions{})
 }
 
 // MetricMetadataOptions holds optional parameters for getting metric metadata
@@ -478,12 +478,12 @@ type MetricMetadataOptions struct {
 }
 
 // GetMetricMetadataWithOptions gets metadata for a specific metric with options
-func (c *Client) GetMetricMetadataWithOptions(metric string, options MetricMetadataOptions) (MetricMetadata, error) {
+func (c *Client) GetMetricMetadataWithOptions(ctx context.Context, metric string, options MetricMetadataOptions) (MetricMetadata, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	metadata, err := c.client.Metadata(ctx, metric, options.Limit)
@@ -519,12 +519,12 @@ type TargetsResult struct {
 }
 
 // GetTargets gets information about scrape targets
-func (c *Client) GetTargets() (*TargetsResult, error) {
+func (c *Client) GetTargets(ctx context.Context) (*TargetsResult, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	targets, err := c.client.Targets(ctx)
@@ -570,12 +570,12 @@ type LabelNamesResult struct {
 }
 
 // ListLabelNames gets all available label names
-func (c *Client) ListLabelNames(options LabelOptions) (*LabelNamesResult, error) {
+func (c *Client) ListLabelNames(ctx context.Context, options LabelOptions) (*LabelNamesResult, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	var startTime, endTime time.Time
@@ -635,12 +635,12 @@ type LabelOptions struct {
 }
 
 // ListLabelValues gets values for a specific label
-func (c *Client) ListLabelValues(label string, options LabelOptions) (*LabelValuesResult, error) {
+func (c *Client) ListLabelValues(ctx context.Context, label string, options LabelOptions) (*LabelValuesResult, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	var startTime, endTime time.Time
@@ -705,12 +705,12 @@ type SeriesOptions struct {
 }
 
 // FindSeries finds series by label matchers
-func (c *Client) FindSeries(matches []string, options SeriesOptions) (*SeriesResult, error) {
+func (c *Client) FindSeries(ctx context.Context, matches []string, options SeriesOptions) (*SeriesResult, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	var startTime, endTime time.Time
@@ -765,12 +765,12 @@ func (c *Client) FindSeries(matches []string, options SeriesOptions) (*SeriesRes
 }
 
 // GetRules gets recording and alerting rules
-func (c *Client) GetRules() (interface{}, error) {
+func (c *Client) GetRules(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	rules, err := c.client.Rules(ctx)
@@ -782,12 +782,12 @@ func (c *Client) GetRules() (interface{}, error) {
 }
 
 // GetAlerts gets active alerts
-func (c *Client) GetAlerts() (interface{}, error) {
+func (c *Client) GetAlerts(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	alerts, err := c.client.Alerts(ctx)
@@ -799,12 +799,12 @@ func (c *Client) GetAlerts() (interface{}, error) {
 }
 
 // GetAlertManagers gets AlertManager discovery info
-func (c *Client) GetAlertManagers() (interface{}, error) {
+func (c *Client) GetAlertManagers(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	alertManagers, err := c.client.AlertManagers(ctx)
@@ -816,12 +816,12 @@ func (c *Client) GetAlertManagers() (interface{}, error) {
 }
 
 // GetConfig gets Prometheus configuration
-func (c *Client) GetConfig() (interface{}, error) {
+func (c *Client) GetConfig(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	config, err := c.client.Config(ctx)
@@ -833,12 +833,12 @@ func (c *Client) GetConfig() (interface{}, error) {
 }
 
 // GetFlags gets runtime flags
-func (c *Client) GetFlags() (interface{}, error) {
+func (c *Client) GetFlags(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	flags, err := c.client.Flags(ctx)
@@ -850,12 +850,12 @@ func (c *Client) GetFlags() (interface{}, error) {
 }
 
 // GetBuildInfo gets build information
-func (c *Client) GetBuildInfo() (interface{}, error) {
+func (c *Client) GetBuildInfo(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	buildInfo, err := c.client.Buildinfo(ctx)
@@ -867,12 +867,12 @@ func (c *Client) GetBuildInfo() (interface{}, error) {
 }
 
 // GetRuntimeInfo gets runtime information
-func (c *Client) GetRuntimeInfo() (interface{}, error) {
+func (c *Client) GetRuntimeInfo(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	runtimeInfo, err := c.client.Runtimeinfo(ctx)
@@ -884,12 +884,12 @@ func (c *Client) GetRuntimeInfo() (interface{}, error) {
 }
 
 // GetTSDBStats gets TSDB cardinality statistics
-func (c *Client) GetTSDBStats(options TSDBOptions) (interface{}, error) {
+func (c *Client) GetTSDBStats(ctx context.Context, options TSDBOptions) (interface{}, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	// Build API options
@@ -914,12 +914,12 @@ type TSDBOptions struct {
 }
 
 // QueryExemplars queries exemplars for traces
-func (c *Client) QueryExemplars(query, start, end string) (interface{}, error) {
+func (c *Client) QueryExemplars(ctx context.Context, query, start, end string) (interface{}, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	// Parse start time
@@ -976,12 +976,12 @@ func (c *Client) CheckReady(ctx context.Context) (*HealthStatus, error) {
 }
 
 // GetTargetsMetadata gets metadata about metrics from specific targets
-func (c *Client) GetTargetsMetadata(matchTarget, metric, limit string) (interface{}, error) {
+func (c *Client) GetTargetsMetadata(ctx context.Context, matchTarget, metric, limit string) (interface{}, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("Prometheus client not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	targetsMetadata, err := c.client.TargetsMetadata(ctx, matchTarget, metric, limit)

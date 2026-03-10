@@ -391,9 +391,9 @@ func handleExecuteQuery(ctx context.Context, request mcp.CallToolRequest, client
 	var result *QueryResult
 	var err error
 	if options.Timeout != "" || options.Limit != "" || options.Stats != "" || options.LookbackDelta != "" {
-		result, err = client.ExecuteQueryWithOptions(query, timeParam, options)
+		result, err = client.ExecuteQueryWithOptions(ctx, query, timeParam, options)
 	} else {
-		result, err = client.ExecuteQuery(query, timeParam)
+		result, err = client.ExecuteQuery(ctx, query, timeParam)
 	}
 
 	if err != nil {
@@ -493,9 +493,9 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 	var result *QueryResult
 	var err error
 	if options.Timeout != "" || options.Limit != "" || options.Stats != "" || options.LookbackDelta != "" {
-		result, err = client.ExecuteRangeQueryWithOptions(query, start, end, step, options)
+		result, err = client.ExecuteRangeQueryWithOptions(ctx, query, start, end, step, options)
 	} else {
-		result, err = client.ExecuteRangeQuery(query, start, end, step)
+		result, err = client.ExecuteRangeQuery(ctx, query, start, end, step)
 	}
 
 	if err != nil {
@@ -534,7 +534,7 @@ func handleListMetrics(ctx context.Context, request mcp.CallToolRequest, client 
 
 	sc.Logger().Debug("Listing metrics", "options", options)
 
-	metrics, err := client.ListMetricsWithOptions(options)
+	metrics, err := client.ListMetricsWithOptions(ctx, options)
 	if err != nil {
 		sc.Logger().Error("Failed to list metrics", "error", err)
 		return &mcp.CallToolResult{
@@ -595,7 +595,7 @@ func handleGetMetricMetadata(ctx context.Context, request mcp.CallToolRequest, c
 
 	sc.Logger().Debug("Getting metric metadata", "metric", metric, "options", options)
 
-	metadata, err := client.GetMetricMetadataWithOptions(metric, options)
+	metadata, err := client.GetMetricMetadataWithOptions(ctx, metric, options)
 	if err != nil {
 		sc.Logger().Error("Failed to get metric metadata", "error", err, "metric", metric)
 		return &mcp.CallToolResult{
@@ -623,7 +623,7 @@ func handleGetMetricMetadata(ctx context.Context, request mcp.CallToolRequest, c
 func handleGetTargets(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
 	sc.Logger().Debug("Getting targets")
 
-	targets, err := client.GetTargets()
+	targets, err := client.GetTargets(ctx)
 	if err != nil {
 		sc.Logger().Error("Failed to get targets", "error", err)
 		return &mcp.CallToolResult{
@@ -668,7 +668,7 @@ func handleListLabelNames(ctx context.Context, request mcp.CallToolRequest, clie
 
 	sc.Logger().Debug("Listing label names", "options", options)
 
-	result, err := client.ListLabelNames(options)
+	result, err := client.ListLabelNames(ctx, options)
 	if err != nil {
 		sc.Logger().Error("Failed to list label names", "error", err)
 		return &mcp.CallToolResult{
@@ -731,7 +731,7 @@ func handleListLabelValues(ctx context.Context, request mcp.CallToolRequest, cli
 
 	sc.Logger().Debug("Listing label values", "label", label, "options", options)
 
-	result, err := client.ListLabelValues(label, options)
+	result, err := client.ListLabelValues(ctx, label, options)
 	if err != nil {
 		sc.Logger().Error("Failed to list label values", "error", err)
 		return &mcp.CallToolResult{
@@ -798,7 +798,7 @@ func handleFindSeries(ctx context.Context, request mcp.CallToolRequest, client *
 
 	sc.Logger().Debug("Finding series", "matches", matches, "options", options)
 
-	result, err := client.FindSeries(matches, options)
+	result, err := client.FindSeries(ctx, matches, options)
 	if err != nil {
 		sc.Logger().Error("Failed to find series", "error", err)
 		return &mcp.CallToolResult{
@@ -845,7 +845,7 @@ func handleFindSeries(ctx context.Context, request mcp.CallToolRequest, client *
 func handleGetRules(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
 	sc.Logger().Debug("Getting rules")
 
-	rules, err := client.GetRules()
+	rules, err := client.GetRules(ctx)
 	if err != nil {
 		sc.Logger().Error("Failed to get rules", "error", err)
 		return &mcp.CallToolResult{
@@ -873,7 +873,7 @@ func handleGetRules(ctx context.Context, request mcp.CallToolRequest, client *Cl
 func handleGetAlerts(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
 	sc.Logger().Debug("Getting alerts")
 
-	alerts, err := client.GetAlerts()
+	alerts, err := client.GetAlerts(ctx)
 	if err != nil {
 		sc.Logger().Error("Failed to get alerts", "error", err)
 		return &mcp.CallToolResult{
@@ -901,7 +901,7 @@ func handleGetAlerts(ctx context.Context, request mcp.CallToolRequest, client *C
 func handleGetAlertManagers(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
 	sc.Logger().Debug("Getting alert managers")
 
-	alertManagers, err := client.GetAlertManagers()
+	alertManagers, err := client.GetAlertManagers(ctx)
 	if err != nil {
 		sc.Logger().Error("Failed to get alert managers", "error", err)
 		return &mcp.CallToolResult{
@@ -929,7 +929,7 @@ func handleGetAlertManagers(ctx context.Context, request mcp.CallToolRequest, cl
 func handleGetConfig(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
 	sc.Logger().Debug("Getting config")
 
-	config, err := client.GetConfig()
+	config, err := client.GetConfig(ctx)
 	if err != nil {
 		sc.Logger().Error("Failed to get config", "error", err)
 		return &mcp.CallToolResult{
@@ -957,7 +957,7 @@ func handleGetConfig(ctx context.Context, request mcp.CallToolRequest, client *C
 func handleGetFlags(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
 	sc.Logger().Debug("Getting flags")
 
-	flags, err := client.GetFlags()
+	flags, err := client.GetFlags(ctx)
 	if err != nil {
 		sc.Logger().Error("Failed to get flags", "error", err)
 		return &mcp.CallToolResult{
@@ -985,7 +985,7 @@ func handleGetFlags(ctx context.Context, request mcp.CallToolRequest, client *Cl
 func handleGetBuildInfo(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
 	sc.Logger().Debug("Getting build info")
 
-	buildInfo, err := client.GetBuildInfo()
+	buildInfo, err := client.GetBuildInfo(ctx)
 	if err != nil {
 		sc.Logger().Error("Failed to get build info", "error", err)
 		return &mcp.CallToolResult{
@@ -1013,7 +1013,7 @@ func handleGetBuildInfo(ctx context.Context, request mcp.CallToolRequest, client
 func handleGetRuntimeInfo(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
 	sc.Logger().Debug("Getting runtime info")
 
-	runtimeInfo, err := client.GetRuntimeInfo()
+	runtimeInfo, err := client.GetRuntimeInfo(ctx)
 	if err != nil {
 		sc.Logger().Error("Failed to get runtime info", "error", err)
 		return &mcp.CallToolResult{
@@ -1046,7 +1046,7 @@ func handleGetTSDBStats(ctx context.Context, request mcp.CallToolRequest, client
 	}
 	sc.Logger().Debug("Getting TSDB stats", "options", options)
 
-	tsdbStats, err := client.GetTSDBStats(options)
+	tsdbStats, err := client.GetTSDBStats(ctx, options)
 	if err != nil {
 		sc.Logger().Error("Failed to get TSDB stats", "error", err)
 		return &mcp.CallToolResult{
@@ -1114,7 +1114,7 @@ func handleQueryExemplars(ctx context.Context, request mcp.CallToolRequest, clie
 	}
 	sc.Logger().Debug("Querying exemplars", "query", query, "start", start, "end", end)
 
-	exemplars, err := client.QueryExemplars(query, start, end)
+	exemplars, err := client.QueryExemplars(ctx, query, start, end)
 	if err != nil {
 		sc.Logger().Error("Failed to query exemplars", "error", err)
 		return &mcp.CallToolResult{
@@ -1147,7 +1147,7 @@ func handleGetTargetsMetadata(ctx context.Context, request mcp.CallToolRequest, 
 	limit := getStringParam(params, "limit")
 	sc.Logger().Debug("Getting targets metadata", "match_target", matchTarget, "metric", metric, "limit", limit)
 
-	targetsMetadata, err := client.GetTargetsMetadata(matchTarget, metric, limit)
+	targetsMetadata, err := client.GetTargetsMetadata(ctx, matchTarget, metric, limit)
 	if err != nil {
 		sc.Logger().Error("Failed to get targets metadata", "error", err)
 		return &mcp.CallToolResult{
