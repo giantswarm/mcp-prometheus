@@ -1186,13 +1186,17 @@ func handleCheckReady(ctx context.Context, request mcp.CallToolRequest, client *
 		}, nil
 	}
 
-	state := "ready"
 	if !status.Ready {
-		state = "not ready"
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				mcp.TextContent{Type: "text", Text: fmt.Sprintf("Prometheus is not ready (HTTP %d): %s", status.StatusCode, status.Message)},
+			},
+		}, nil
 	}
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			mcp.TextContent{Type: "text", Text: fmt.Sprintf("Prometheus is %s (HTTP %d): %s", state, status.StatusCode, status.Message)},
+			mcp.TextContent{Type: "text", Text: fmt.Sprintf("Prometheus is ready (HTTP %d): %s", status.StatusCode, status.Message)},
 		},
 	}, nil
 }
