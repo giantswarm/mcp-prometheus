@@ -136,7 +136,10 @@ func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.
 // Pass optional ToolMiddleware values to instrument every tool call (e.g. metrics, tracing).
 func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, middleware ...ToolMiddleware) error {
 	// Create Prometheus client
-	client := NewClient(sc.PrometheusConfig(), sc.Logger())
+	client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
+	if err != nil {
+		return fmt.Errorf("tools: create Prometheus client: %w", err)
+	}
 
 	// Query execution tools
 	registerPrometheusTools(s, client, sc, middleware, "execute_query", "Execute a PromQL instant query against Prometheus",
@@ -348,12 +351,7 @@ func createClientFromParams(ctx context.Context, params map[string]interface{}, 
 		"url", config.URL, "orgID", config.OrgID, "hasAuth", config.Username != "" || config.Token != "")
 
 	// Create and return new client
-	client := NewClient(config, sc.Logger())
-	if client.client == nil {
-		return nil, fmt.Errorf("failed to initialize Prometheus client with URL: %s, OrgID: %s", config.URL, config.OrgID)
-	}
-
-	return client, nil
+	return NewClient(config, sc.Logger())
 }
 
 // handleExecuteQuery handles the execute_query tool with enhanced parameters

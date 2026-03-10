@@ -65,18 +65,15 @@ type Client struct {
 	logger     *slog.Logger
 }
 
-// NewClient creates a new Prometheus client using the official client library
-func NewClient(config server.PrometheusConfig, logger *slog.Logger) *Client {
+// NewClient creates a new Prometheus client using the official client library.
+// It returns an error for configuration problems (empty URL, unreadable CA
+// file) rather than returning a partially initialised client that panics on
+// first use.
+func NewClient(config server.PrometheusConfig, logger *slog.Logger) (*Client, error) {
 	logger.Debug("Creating new Prometheus client", "url", config.URL, "orgID", config.OrgID)
 
-	// Validate URL
 	if config.URL == "" {
-		logger.Error("Prometheus URL is empty")
-		return &Client{
-			client: nil,
-			config: config,
-			logger: logger,
-		}
+		return nil, fmt.Errorf("prometheus URL is required")
 	}
 
 	// Start with default transport, or a custom TLS transport when needed
@@ -89,13 +86,11 @@ func NewClient(config server.PrometheusConfig, logger *slog.Logger) *Client {
 		if config.TLSCACert != "" {
 			caPEM, err := os.ReadFile(config.TLSCACert)
 			if err != nil {
-				logger.Error("Failed to read CA certificate", "path", config.TLSCACert, "error", err)
-				return &Client{client: nil, config: config, logger: logger}
+				return nil, fmt.Errorf("read CA certificate %q: %w", config.TLSCACert, err)
 			}
 			pool := x509.NewCertPool()
 			if !pool.AppendCertsFromPEM(caPEM) {
-				logger.Error("Failed to parse CA certificate — file may not be valid PEM", "path", config.TLSCACert)
-				return &Client{client: nil, config: config, logger: logger}
+				return nil, fmt.Errorf("parse CA certificate %q: file does not contain valid PEM data", config.TLSCACert)
 			}
 			tlsConfig.RootCAs = pool
 			logger.Debug("Using custom CA certificate", "path", config.TLSCACert)
@@ -110,19 +105,10 @@ func NewClient(config server.PrometheusConfig, logger *slog.Logger) *Client {
 
 	// Add authentication layer
 	if config.Token != "" {
-		// Bearer token authentication
-		roundTripper = &bearerTokenRoundTripper{
-			token: config.Token,
-			rt:    roundTripper,
-		}
+		roundTripper = &bearerTokenRoundTripper{token: config.Token, rt: roundTripper}
 		logger.Debug("Using bearer token authentication")
 	} else if config.Username != "" && config.Password != "" {
-		// Basic authentication
-		roundTripper = &basicAuthRoundTripper{
-			username: config.Username,
-			password: config.Password,
-			rt:       roundTripper,
-		}
+		roundTripper = &basicAuthRoundTripper{username: config.Username, password: config.Password, rt: roundTripper}
 		logger.Debug("Using basic authentication", "username", config.Username)
 	} else {
 		logger.Debug("No authentication configured")
@@ -130,28 +116,16 @@ func NewClient(config server.PrometheusConfig, logger *slog.Logger) *Client {
 
 	// Add organization ID layer if specified
 	if config.OrgID != "" {
-		roundTripper = &orgIDRoundTripper{
-			orgID: config.OrgID,
-			rt:    roundTripper,
-		}
+		roundTripper = &orgIDRoundTripper{orgID: config.OrgID, rt: roundTripper}
 		logger.Debug("Using organization ID", "orgID", config.OrgID)
 	}
 
-	logger.Debug("Creating Prometheus API client", "address", config.URL)
-
-	// Create the official Prometheus client
 	promClient, err := api.NewClient(api.Config{
 		Address:      config.URL,
 		RoundTripper: roundTripper,
 	})
 	if err != nil {
-		logger.Error("Failed to create Prometheus client", "error", err, "url", config.URL)
-		// Return a client that will fail on use rather than panicking here
-		return &Client{
-			client: nil,
-			config: config,
-			logger: logger,
-		}
+		return nil, fmt.Errorf("create Prometheus API client for %q: %w", config.URL, err)
 	}
 
 	logger.Debug("Successfully created Prometheus client", "address", config.URL)
@@ -161,7 +135,7 @@ func NewClient(config server.PrometheusConfig, logger *slog.Logger) *Client {
 		httpClient: &http.Client{Transport: roundTripper, Timeout: 10 * time.Second},
 		config:     config,
 		logger:     logger,
-	}
+	}, nil
 }
 
 // QueryResult represents the result of an instant query
