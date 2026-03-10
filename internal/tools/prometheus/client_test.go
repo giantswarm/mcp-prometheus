@@ -180,7 +180,7 @@ func TestNewClientTLSUntrustedException(t *testing.T) {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
 
-	_, err := client.ExecuteQuery(context.Background(), "up", "")
+	_, err = client.ExecuteQuery(context.Background(), "up", "")
 	if err == nil {
 		t.Error("expected TLS error when connecting without a trusted CA, got nil")
 	}

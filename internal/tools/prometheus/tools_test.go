@@ -467,7 +467,10 @@ func TestCheckReadyMimirFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(server.PrometheusConfig{URL: srv.URL + "/prometheus"}, &TestLogger{})
+	client, err := NewClient(server.PrometheusConfig{URL: srv.URL + "/prometheus"}, &TestLogger{})
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
 	status, err := client.CheckReady(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
