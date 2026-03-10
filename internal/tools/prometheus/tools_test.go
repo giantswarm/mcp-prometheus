@@ -104,14 +104,14 @@ func TestClient(t *testing.T) {
 		name     string
 		endpoint string
 		response string
-		testFunc func(*Client) error
+		testFunc func(context.Context, *Client) error
 	}{
 		{
 			name:     "ExecuteQuery",
 			endpoint: "/api/v1/query",
 			response: `{"status": "success", "data": {"resultType": "vector", "result": []}}`,
-			testFunc: func(c *Client) error {
-				_, err := c.ExecuteQuery("up", "")
+			testFunc: func(ctx context.Context, c *Client) error {
+				_, err := c.ExecuteQuery(ctx, "up", "")
 				return err
 			},
 		},
@@ -119,8 +119,8 @@ func TestClient(t *testing.T) {
 			name:     "ExecuteRangeQuery",
 			endpoint: "/api/v1/query_range",
 			response: `{"status": "success", "data": {"resultType": "matrix", "result": []}}`,
-			testFunc: func(c *Client) error {
-				_, err := c.ExecuteRangeQuery("up", "2023-01-01T00:00:00Z", "2023-01-01T01:00:00Z", "1m")
+			testFunc: func(ctx context.Context, c *Client) error {
+				_, err := c.ExecuteRangeQuery(ctx, "up", "2023-01-01T00:00:00Z", "2023-01-01T01:00:00Z", "1m")
 				return err
 			},
 		},
@@ -128,8 +128,8 @@ func TestClient(t *testing.T) {
 			name:     "ListMetrics",
 			endpoint: "/api/v1/label/__name__/values",
 			response: `{"status": "success", "data": ["metric1", "metric2"]}`,
-			testFunc: func(c *Client) error {
-				_, err := c.ListMetrics()
+			testFunc: func(ctx context.Context, c *Client) error {
+				_, err := c.ListMetrics(ctx)
 				return err
 			},
 		},
@@ -137,8 +137,8 @@ func TestClient(t *testing.T) {
 			name:     "GetMetricMetadata",
 			endpoint: "/api/v1/metadata",
 			response: `{"status": "success", "data": {"http_requests_total": [{"type": "counter", "help": "Total HTTP requests", "unit": ""}]}}`,
-			testFunc: func(c *Client) error {
-				result, err := c.GetMetricMetadata("http_requests_total")
+			testFunc: func(ctx context.Context, c *Client) error {
+				result, err := c.GetMetricMetadata(ctx, "http_requests_total")
 				if err != nil {
 					return err
 				}
@@ -153,8 +153,8 @@ func TestClient(t *testing.T) {
 			name:     "GetTargets",
 			endpoint: "/api/v1/targets",
 			response: `{"status": "success", "data": {"activeTargets": [], "droppedTargets": []}}`,
-			testFunc: func(c *Client) error {
-				_, err := c.GetTargets()
+			testFunc: func(ctx context.Context, c *Client) error {
+				_, err := c.GetTargets(ctx)
 				return err
 			},
 		},
@@ -162,8 +162,8 @@ func TestClient(t *testing.T) {
 			name:     "CheckReady",
 			endpoint: "/-/ready",
 			response: "Prometheus is Ready.",
-			testFunc: func(c *Client) error {
-				status, err := c.CheckReady(context.Background())
+			testFunc: func(ctx context.Context, c *Client) error {
+				status, err := c.CheckReady(ctx)
 				if err != nil {
 					return err
 				}
@@ -195,7 +195,7 @@ func TestClient(t *testing.T) {
 			client := NewClient(config, logger)
 
 			// Run test
-			if err := tt.testFunc(client); err != nil {
+			if err := tt.testFunc(context.Background(), client); err != nil {
 				t.Errorf("Test failed: %v", err)
 			}
 		})
