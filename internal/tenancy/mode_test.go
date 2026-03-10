@@ -37,3 +37,16 @@ func TestNewResolverForMode_UnknownMode(t *testing.T) {
 		t.Fatal("expected error for unknown mode, got nil")
 	}
 }
+
+func TestNewResolverForMode_Static_EmptyConfig(t *testing.T) {
+	// Static mode with no tenants and no group map must fail at construction
+	// time rather than silently denying every authenticated request at runtime.
+	_, err := NewResolverForMode(ModeStatic, nil, nil)
+	if err == nil {
+		t.Fatal("expected error for static mode with no tenants or groups, got nil")
+	}
+	_, err = NewResolverForMode(ModeStatic, []string{}, map[string][]string{})
+	if err == nil {
+		t.Fatal("expected error for static mode with empty tenants and empty groups, got nil")
+	}
+}
