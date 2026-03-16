@@ -8,10 +8,12 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	mcpoauth "github.com/giantswarm/mcp-oauth"
 	"github.com/giantswarm/mcp-oauth/providers"
 	"github.com/giantswarm/mcp-oauth/providers/dex"
+	mcpoidc "github.com/giantswarm/mcp-oauth/providers/oidc"
 	"github.com/giantswarm/mcp-oauth/security"
 	"github.com/giantswarm/mcp-oauth/storage"
 	"github.com/giantswarm/mcp-oauth/storage/memory"
@@ -68,6 +70,16 @@ type Config struct {
 	// mcp-prometheus accepts it if the token's audience matches any entry here.
 	// Tokens must still be from the configured issuer (Dex) and cryptographically valid.
 	TrustedAudiences []string
+
+	// AllowPrivateURLs permits OIDC discovery against Dex instances whose hostname
+	// resolves to a private/internal IP address (e.g. dex.<mc>.<baseDomain> on a
+	// private management cluster). When true, the HTTP client used for OIDC
+	// discovery bypasses the built-in SSRF protection that normally blocks
+	// connections to RFC-1918 ranges.
+	//
+	// Set MCP_OAUTH_ALLOW_PRIVATE_URLS=true only in trusted internal environments
+	// where the Dex issuer URL uses internal DNS. TLS verification is still enforced.
+	AllowPrivateURLs bool
 }
 
 // ConfigFromEnv builds a Config by reading the standard environment variables.
@@ -85,6 +97,7 @@ func ConfigFromEnv() Config {
 		DexClientID:             os.Getenv("DEX_CLIENT_ID"),
 		DexClientSecret:         os.Getenv("DEX_CLIENT_SECRET"),
 		DexRedirectURL:          os.Getenv("DEX_REDIRECT_URL"),
+		AllowPrivateURLs:        os.Getenv("MCP_OAUTH_ALLOW_PRIVATE_URLS") == "true",
 	}
 	if v := os.Getenv("OAUTH_TRUSTED_AUDIENCES"); v != "" {
 		for _, a := range strings.Split(v, ",") {
@@ -110,14 +123,22 @@ func NewHandler(ctx context.Context, cfg Config, logger *slog.Logger) (*mcpoauth
 		return nil, nil, fmt.Errorf("oauth: DEX_REDIRECT_URL must be set")
 	}
 
-	provider, err := dex.NewProvider(&dex.Config{
+	dexCfg := &dex.Config{
 		IssuerURL:    cfg.DexIssuerURL,
 		ClientID:     cfg.DexClientID,
 		ClientSecret: cfg.DexClientSecret,
 		RedirectURL:  cfg.DexRedirectURL,
 		// Request groups so the tenant resolver can match GrafanaOrganization RBAC.
 		Scopes: []string{"openid", "profile", "email", "groups", "offline_access"},
-	})
+	}
+	if cfg.AllowPrivateURLs {
+		// Inject an HTTP client that allows connections to private/internal IP
+		// ranges. Required when the Dex issuer URL is an internal DNS name that
+		// resolves to an RFC-1918 address (e.g. on a private management cluster).
+		// TLS verification is still enforced by this client.
+		dexCfg.HTTPClient = mcpoidc.NewPrivateIPAllowedHTTPClient(30 * time.Second)
+	}
+	provider, err := dex.NewProvider(dexCfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("oauth: create Dex provider: %w", err)
 	}

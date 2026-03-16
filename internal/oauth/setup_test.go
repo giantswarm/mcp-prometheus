@@ -14,6 +14,7 @@ func TestConfigFromEnvDefaults(t *testing.T) {
 	for _, key := range []string{
 		"MCP_OAUTH_ISSUER", "MCP_OAUTH_ENCRYPTION_KEY",
 		"MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION",
+		"MCP_OAUTH_ALLOW_PRIVATE_URLS",
 		"OAUTH_STORAGE", "VALKEY_URL", "VALKEY_PASSWORD",
 		"VALKEY_TLS_ENABLED", "VALKEY_KEY_PREFIX",
 		"DEX_ISSUER_URL", "DEX_CLIENT_ID", "DEX_CLIENT_SECRET", "DEX_REDIRECT_URL",
@@ -31,6 +32,9 @@ func TestConfigFromEnvDefaults(t *testing.T) {
 	}
 	if cfg.ValkeyTLS {
 		t.Error("expected ValkeyTLS == false by default")
+	}
+	if cfg.AllowPrivateURLs {
+		t.Error("expected AllowPrivateURLs == false by default")
 	}
 }
 
@@ -87,6 +91,16 @@ func TestConfigFromEnvReadsValues(t *testing.T) {
 	}
 	if !cfg.ValkeyTLS {
 		t.Error("expected ValkeyTLS == true")
+	}
+}
+
+func TestConfigFromEnvAllowPrivateURLs(t *testing.T) {
+	os.Setenv("MCP_OAUTH_ALLOW_PRIVATE_URLS", "true")
+	defer os.Unsetenv("MCP_OAUTH_ALLOW_PRIVATE_URLS")
+
+	cfg := ConfigFromEnv()
+	if !cfg.AllowPrivateURLs {
+		t.Error("expected AllowPrivateURLs == true when MCP_OAUTH_ALLOW_PRIVATE_URLS=true")
 	}
 }
 
