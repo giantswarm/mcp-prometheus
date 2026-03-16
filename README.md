@@ -1,400 +1,537 @@
 # MCP Prometheus
 
-A comprehensive [Model Context Protocol][mcp] (MCP) server for Prometheus, written in Go.
-
-This provides complete access to your Prometheus metrics, queries, and system information through standardized MCP interfaces, allowing AI assistants to execute PromQL queries, discover metrics, explore labels, and analyze your monitoring infrastructure.
+An [MCP (Model Context Protocol)][mcp] server for Prometheus and Mimir, written in Go.
+Deployed in-cluster at Giant Swarm to give AI assistants authenticated, multi-tenant access to metrics infrastructure.
 
 [mcp]: https://modelcontextprotocol.io
 
-## Features
+## What it does
 
-### 🔍 **Query Execution**
-- [x] **Instant queries** with optional timestamp and enhanced parameters
-- [x] **Range queries** with time bounds, step intervals, and performance options
-- [x] **Query optimization** with timeout, limit, and stats parameters
-- [x] **Result truncation** with intelligent user guidance for large datasets
+MCP Prometheus exposes 18 read-only MCP tools that wrap the Prometheus HTTP API:
+instant and range PromQL queries, metric/label/series discovery, target and runtime information, TSDB stats, alerting rules, and exemplars.
 
-### 📊 **Metrics Discovery**
-- [x] **List all available metrics** with filtering and time-based selection
-- [x] **Get detailed metadata** for specific metrics
-- [x] **Metric exploration** with enhanced filtering options
+When deployed with OAuth enabled it acts as a full **OAuth 2.1 Authorization Server** (backed by Dex/OIDC),
+so MCP clients authenticate with the server before any tool call.
+The server then resolves the authenticated user's Mimir tenant IDs and enforces them on every query.
 
-### 🏷️ **Label & Series Discovery**
-- [x] **List all label names** with filtering and limits
-- [x] **Get label values** for specific labels with advanced filtering
-- [x] **Find series** by label matchers with time bounds
-- [x] **Advanced label matching** with complex selectors
+---
 
-### 🎯 **Target & System Information**
-- [x] **Scrape target information** and health status
-- [x] **Build information** and version details
-- [x] **Runtime information** and system status
-- [x] **Configuration and flags** inspection
-- [x] **TSDB statistics** and cardinality information
-- [x] **Readiness check** (`check_ready`) — query `/-/ready` (compatible with Prometheus and Mimir)
+## Contents
 
-### 🚨 **Alerting & Rules**
-- [x] **Active alerts** monitoring
-- [x] **AlertManager discovery** and status
-- [x] **Recording and alerting rules** inspection
+- [Architecture](#architecture)
+- [Installation](#installation)
+- [Configuration reference](#configuration-reference)
+- [Transport modes](#transport-modes)
+- [OAuth 2.1 authentication](#oauth-21-authentication)
+  - [Full OAuth flow](#full-oauth-flow)
+  - [SSO token forwarding (trustedAudiences)](#sso-token-forwarding-trustedaudiences)
+- [Multi-tenancy](#multi-tenancy)
+  - [GrafanaOrganization mode (default)](#grafanaorganization-mode-default)
+  - [Static mode](#static-mode)
+- [Available tools](#available-tools)
+- [Kubernetes deployment (Helm)](#kubernetes-deployment-helm)
+- [Development](#development)
 
-### 🔬 **Advanced Features**
-- [x] **Exemplar queries** for trace correlation
-- [x] **Target metadata** exploration
-- [x] **Multi-tenant support** with dynamic organization IDs
-- [x] **Dynamic client configuration** per-query
+---
 
-### 🔐 **Authentication & Transport**
-- [x] **Multiple authentication methods** (Basic, Bearer token)
-- [x] **Multi-tenant organization headers** (Cortex, Mimir, Thanos)
-- [x] **Multiple transport protocols** (stdio, SSE, HTTP)
-- [x] **Cross-platform binary distribution**
-- [x] **TLS skip-verify** (`PROMETHEUS_TLS_SKIP_VERIFY`) for self-signed certs in dev/staging
-- [x] **Custom CA certificate** (`PROMETHEUS_TLS_CA_CERT`) for private PKI / in-cluster CAs
+## Architecture
 
-### 📈 **Observability**
-- [x] **Prometheus metrics** (`/metrics`) — tool call counters and latency histograms, Go runtime and process metrics
-- [x] **Liveness probe** (`/healthz`) — always 200 OK while the process is running
-- [x] **Readiness probe** (`/readyz`) — 200 OK after all tools are registered
-- [x] **OpenTelemetry tracing** — no-op by default; OTLP HTTP export when `OTEL_EXPORTER_OTLP_ENDPOINT` is set
-- [x] **Separate observability port** (`--metrics-addr`, default `:9091`) — keeps metrics/health traffic off the MCP port
+```
+MCP Client (Claude, muster, …)
+        │  OAuth 2.1 + MCP over HTTP
+        ▼
+┌──────────────────────────────────┐
+│         mcp-prometheus           │
+│                                  │
+│  ┌────────────┐  ┌─────────────┐ │
+│  │ OAuth 2.1  │  │  MCP Tools  │ │
+│  │ server     │  │  (PromQL,   │ │
+│  │ (mcp-oauth)│  │   labels, …)│ │
+│  └─────┬──────┘  └──────┬──────┘ │
+│        │                │        │
+│  ┌─────▼──────┐  ┌──────▼──────┐ │
+│  │ Dex OIDC   │  │  Tenancy    │ │
+│  │ provider   │  │  resolver   │ │
+│  └────────────┘  └──────┬──────┘ │
+└─────────────────────────┼────────┘
+                          │
+          ┌───────────────┴──────────────┐
+          │                              │
+   ┌──────▼───────┐              ┌───────▼──────┐
+   │ GrafanaOrg   │              │  Prometheus  │
+   │ CRDs (k8s)   │              │  / Mimir     │
+   └──────────────┘              └──────────────┘
+```
+
+The server listens on two ports:
+- **`:8080`** — MCP + OAuth endpoints (served to clients)
+- **`:9091`** — observability: `/metrics`, `/healthz`, `/readyz` (internal only)
+
+---
 
 ## Installation
 
-### Pre-built Binaries
+### Pre-built binaries
 
-Download the latest binary for your platform from the [releases page](../../releases).
+Download the latest release from the [releases page](../../releases).
 
-### From Source
+### From source
 
 ```bash
 git clone https://github.com/giantswarm/mcp-prometheus.git
 cd mcp-prometheus
-go build -o mcp-prometheus
+go build -o mcp-prometheus ./...
 ```
 
-## Configuration
+### Kubernetes (Helm)
 
-Configure the MCP server through environment variables (all optional):
-
-```bash
-# Optional: Default Prometheus server configuration
-export PROMETHEUS_URL=http://your-prometheus-server:9090
-
-# Optional: Authentication credentials (choose one)
-# For basic auth
-export PROMETHEUS_USERNAME=your_username
-export PROMETHEUS_PASSWORD=your_password
-
-# For bearer token auth  
-export PROMETHEUS_TOKEN=your_token
-
-# Optional: Default organization ID for multi-tenant setups
-export PROMETHEUS_ORGID=your_organization_id
-
-# Optional: TLS configuration
-# Disable TLS certificate verification (insecure, not for production)
-export PROMETHEUS_TLS_SKIP_VERIFY=true
-# Path to a PEM-encoded CA certificate for custom/private PKI
-export PROMETHEUS_TLS_CA_CERT=/etc/ssl/certs/my-ca.pem
-```
-
-**Dynamic Configuration**: All MCP tools support `prometheus_url` and `org_id` parameters for per-query configuration, allowing you to query multiple Prometheus instances and organizations dynamically.
-
-## Usage
-
-### Command Line
-
-Start the server with stdio transport (default):
-
-```bash
-./mcp-prometheus
-```
-
-Start with HTTP transport for web-based clients:
-
-```bash
-./mcp-prometheus serve --transport sse --http-addr :8080
-```
-
-### MCP Client Configuration
-
-Add the server configuration to your MCP client. For example, with Claude Desktop:
-
-```json
-{
-  "mcpServers": {
-    "prometheus": {
-      "command": "/path/to/mcp-prometheus",
-      "args": ["serve"],
-      "env": {
-        "PROMETHEUS_URL": "http://your-prometheus-server:9090",
-        "PROMETHEUS_ORGID": "your-default-org"
-      }
-    }
-  }
-}
-```
-
-## Available Tools
-
-### 🔍 Query Execution Tools
-
-| Tool | Description | Required Parameters | Optional Parameters |
-|------|-------------|-------------------|-------------------|
-| `mcp_prometheus_execute_query` | Execute PromQL instant query | `query` | `prometheus_url`, `org_id`, `time`, `timeout`, `limit`, `stats`, `lookback_delta`, `unlimited` |
-| `mcp_prometheus_execute_range_query` | Execute PromQL range query | `query`, `start`, `end`, `step` | `prometheus_url`, `org_id`, `timeout`, `limit`, `stats`, `lookback_delta`, `unlimited` |
-
-### 📊 Metrics Discovery Tools
-
-| Tool | Description | Required Parameters | Optional Parameters |
-|------|-------------|-------------------|-------------------|
-| `mcp_prometheus_list_metrics` | List all available metrics | - | `prometheus_url`, `org_id`, `start_time`, `end_time`, `matches` |
-| `mcp_prometheus_get_metric_metadata` | Get metadata for specific metric | `metric` | `prometheus_url`, `org_id`, `limit` |
-
-### 🏷️ Label & Series Discovery Tools
-
-| Tool | Description | Required Parameters | Optional Parameters |
-|------|-------------|-------------------|-------------------|
-| `mcp_prometheus_list_label_names` | Get all available label names | - | `prometheus_url`, `org_id`, `start_time`, `end_time`, `matches`, `limit` |
-| `mcp_prometheus_list_label_values` | Get values for specific label | `label` | `prometheus_url`, `org_id`, `start_time`, `end_time`, `matches`, `limit` |
-| `mcp_prometheus_find_series` | Find series by label matchers | `matches` | `prometheus_url`, `org_id`, `start_time`, `end_time`, `limit` |
-
-### 🎯 Target & System Information Tools
-
-| Tool | Description | Required Parameters | Optional Parameters |
-|------|-------------|-------------------|-------------------|
-| `mcp_prometheus_get_targets` | Get scrape target information | - | `prometheus_url`, `org_id` |
-| `mcp_prometheus_get_build_info` | Get Prometheus build information | - | `prometheus_url`, `org_id` |
-| `mcp_prometheus_get_runtime_info` | Get Prometheus runtime information | - | `prometheus_url`, `org_id` |
-| `mcp_prometheus_get_flags` | Get Prometheus runtime flags | - | `prometheus_url`, `org_id` |
-| `mcp_prometheus_get_config` | Get Prometheus configuration | - | `prometheus_url`, `org_id` |
-| `mcp_prometheus_get_tsdb_stats` | Get TSDB cardinality statistics | - | `prometheus_url`, `org_id`, `limit` |
-| `mcp_prometheus_check_ready` | Check server readiness (`/-/ready`) — works on Prometheus and Mimir | - | `prometheus_url`, `org_id` |
-
-### 🚨 Alerting & Rules Tools
-
-| Tool | Description | Required Parameters | Optional Parameters |
-|------|-------------|-------------------|-------------------|
-| `mcp_prometheus_get_alerts` | Get active alerts | - | `prometheus_url`, `org_id` |
-| `mcp_prometheus_get_alertmanagers` | Get AlertManager discovery info | - | `prometheus_url`, `org_id` |
-| `mcp_prometheus_get_rules` | Get recording and alerting rules | - | `prometheus_url`, `org_id` |
-
-### 🔬 Advanced Tools
-
-| Tool | Description | Required Parameters | Optional Parameters |
-|------|-------------|-------------------|-------------------|
-| `mcp_prometheus_query_exemplars` | Query exemplars for traces | `query`, `start`, `end` | `prometheus_url`, `org_id` |
-| `mcp_prometheus_get_targets_metadata` | Get metadata from specific targets | - | `prometheus_url`, `org_id`, `match_target`, `metric`, `limit` |
-
-### 🔧 Enhanced Parameters
-
-**Connection Parameters** (available on all tools):
-- `prometheus_url`: Prometheus server URL (e.g., 'http://localhost:9090')
-- `org_id`: Organization ID for multi-tenant setups (e.g., 'tenant-123')
-
-**Query Enhancement Parameters**:
-- `timeout`: Query timeout (e.g., '30s', '1m', '5m')
-- `limit`: Maximum number of returned entries
-- `stats`: Include query statistics ('all')
-- `lookback_delta`: Query lookback delta (e.g., '5m')
-- `unlimited`: Set to 'true' for unlimited output (WARNING: may impact performance)
-
-**Time Filtering Parameters**:
-- `start_time`, `end_time`: RFC3339 timestamps for filtering
-- `matches`: Array of label matchers (e.g., `['{job="prometheus"}', '{__name__=~"http_.*"}']`)
-
-## Example Usage
-
-### Basic Query Execution
-
-```json
-{
-  "query": "up",
-  "prometheus_url": "http://prometheus:9090",
-  "org_id": "production"
-}
-```
-
-### Enhanced Query with Performance Options
-
-```json
-{
-  "query": "rate(http_requests_total[5m])",
-  "prometheus_url": "http://prometheus:9090", 
-  "timeout": "30s",
-  "limit": "100",
-  "stats": "all"
-}
-```
-
-### Range Query with Time Bounds
-
-```json
-{
-  "query": "cpu_usage_percent",
-  "start": "2025-01-27T00:00:00Z",
-  "end": "2025-01-27T01:00:00Z",
-  "step": "1m",
-  "prometheus_url": "http://prometheus:9090"
-}
-```
-
-### Label Discovery with Filtering
-
-```json
-{
-  "prometheus_url": "http://prometheus:9090",
-  "matches": ["up{job=\"kubernetes-nodes\"}"],
-  "limit": "20"
-}
-```
-
-### Series Discovery
-
-```json
-{
-  "matches": ["{__name__=~\"http_.*\", job=\"api-server\"}"],
-  "prometheus_url": "http://prometheus:9090",
-  "start_time": "2025-01-27T00:00:00Z",
-  "limit": "50"
-}
-```
-
-### Multi-tenant Query
-
-```json
-{
-  "query": "container_memory_usage_bytes",
-  "prometheus_url": "http://cortex-gateway:8080/prometheus",
-  "org_id": "team-platform"
-}
-```
-
-## Query Result Optimization
-
-The MCP server includes intelligent query result handling:
-
-- **Automatic truncation** for results > 50k characters
-- **User guidance** for query optimization when results are large
-- **Performance tips** including aggregation functions and filtering
-- **Unlimited output option** with performance warnings
-
-Example truncation message:
-```
-⚠️  RESULT TRUNCATED: The query returned a very large result (>50k characters).
-
-💡 To optimize your query and get less output, consider:
-   • Adding more specific label filters: {app="specific-app", namespace="specific-ns"}
-   • Using aggregation functions: sum(), avg(), count(), etc.
-   • Using topk() or bottomk() to get only top/bottom N results
-
-🔧 To get the full untruncated result, add "unlimited": "true" to your query parameters.
-```
-
-## Transport Options
-
-The server supports multiple transport protocols:
-
-### stdio (Default)
-```bash
-./mcp-prometheus serve --transport stdio
-```
-
-### SSE (Server-Sent Events)
-```bash
-./mcp-prometheus serve --transport sse --http-addr :8080
-```
-
-### Streamable HTTP
-```bash
-./mcp-prometheus serve --transport streamable-http --http-addr :8080
-```
-
-## Development
-
-### Architecture
-
-The server follows a modern, DRY architecture:
-
-- **Modular tool registration** with parameter reuse
-- **Dynamic client creation** for multi-instance support
-- **Centralized error handling** and parameter validation
-- **Helper functions** to reduce code repetition by 90%
-
-### Project Structure
-
-```
-mcp-prometheus/
-├── cmd/                    # CLI commands and version info
-├── internal/
-│   ├── server/            # Server context and configuration  
-│   └── tools/prometheus/  # 18 comprehensive MCP tools
-├── main.go                # Application entry point
-├── go.mod                 # Go dependencies
-└── README.md              # This documentation
-```
-
-### Code Quality Improvements
-
-- **500+ lines reduced to ~85 lines** in main registration
-- **Eliminated 255+ lines** of redundant boilerplate
-- **Parameter helper functions** for DRY parameter definitions
-- **Centralized client management** with dynamic configuration
-- **Consistent error handling** across all tools
-
-### Building & Testing
-
-```bash
-# Build the binary
-go build -o mcp-prometheus
-
-# Run tests
-go test ./...
-```
-
-## Authentication
-
-### Basic Authentication
-```bash
-export PROMETHEUS_USERNAME=myuser
-export PROMETHEUS_PASSWORD=mypassword
-```
-
-### Bearer Token Authentication
-```bash
-export PROMETHEUS_TOKEN=my-bearer-token
-```
-
-### Multi-tenant Support
-Perfect for Cortex, Mimir, Thanos, and other multi-tenant setups:
-```bash
-export PROMETHEUS_ORGID=tenant-123
-```
-
-## Error Handling
-
-Comprehensive error handling with detailed messages:
-
-- **Missing configuration** guidance
-- **Authentication failure** details  
-- **Network connectivity** troubleshooting
-- **Invalid PromQL** query assistance
-- **Prometheus API error** explanations
-- **Dynamic client creation** error handling
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the same terms as the original Python implementation.
+See [Kubernetes deployment (Helm)](#kubernetes-deployment-helm).
 
 ---
 
-[mcp]: https://modelcontextprotocol.io 
+## Configuration reference
+
+All configuration is via environment variables.
+
+### Prometheus connection
+
+| Variable | Default | Description |
+|---|---|---|
+| `PROMETHEUS_URL` | — | Prometheus/Mimir base URL |
+| `PROMETHEUS_USERNAME` | — | Basic auth username |
+| `PROMETHEUS_PASSWORD` | — | Basic auth password |
+| `PROMETHEUS_TOKEN` | — | Bearer token |
+| `PROMETHEUS_ORGID` | — | Default Mimir org/tenant ID |
+| `PROMETHEUS_TLS_SKIP_VERIFY` | `false` | Skip TLS verification (dev only) |
+| `PROMETHEUS_TLS_CA_CERT` | — | Path to PEM CA certificate |
+
+### OAuth 2.1
+
+| Variable | Default | Description |
+|---|---|---|
+| `MCP_OAUTH_ISSUER` | **required** | Public base URL of this server (e.g. `https://mcp.example.com`) |
+| `MCP_OAUTH_ENCRYPTION_KEY` | — | 32-byte hex AES-256-GCM key for token encryption (`openssl rand -hex 32`) |
+| `MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION` | `false` | Allow unauthenticated dynamic client registration (dev/MCP Inspector only) |
+| `MCP_OAUTH_ALLOW_PRIVATE_URLS` | `false` | Allow OIDC discovery against Dex on private/internal IPs (see [below](#allow-private-urls)) |
+| `OAUTH_TRUSTED_AUDIENCES` | — | Comma-separated client IDs trusted for SSO token forwarding |
+| `OAUTH_STORAGE` | `memory` | Token storage: `memory` or `valkey` |
+| `VALKEY_URL` | — | Valkey/Redis address (required when `OAUTH_STORAGE=valkey`) |
+| `VALKEY_PASSWORD` | — | Valkey auth password |
+| `VALKEY_TLS_ENABLED` | `false` | Enable TLS for Valkey |
+| `VALKEY_KEY_PREFIX` | `mcp:` | Key namespace prefix |
+
+### Dex OIDC provider
+
+| Variable | Default | Description |
+|---|---|---|
+| `DEX_ISSUER_URL` | **required** | Dex issuer URL (e.g. `https://dex.mc.example.io`) |
+| `DEX_CLIENT_ID` | **required** | OAuth client ID registered in Dex |
+| `DEX_CLIENT_SECRET` | **required** | OAuth client secret |
+| `DEX_REDIRECT_URL` | **required** | Callback URL (e.g. `https://mcp.example.com/oauth/callback`) |
+
+### Tenancy
+
+| Variable | Default | Description |
+|---|---|---|
+| `TENANCY_STATIC_GROUP_MAP` | — | JSON map of Dex group → list of Mimir tenant IDs (static mode) |
+
+### Observability
+
+| Variable | Default | Description |
+|---|---|---|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP HTTP endpoint for tracing (no-op if unset) |
+| `OTEL_SERVICE_NAME` | `mcp-prometheus` | Service name in traces |
+
+---
+
+## Transport modes
+
+Start the server with `serve --transport <mode>`:
+
+| Mode | Flag | Use case |
+|---|---|---|
+| `stdio` | `--transport stdio` | Local desktop clients (Claude Desktop, MCP Inspector) |
+| `sse` | `--transport sse` | Legacy SSE clients |
+| `streamable-http` | `--transport streamable-http` | Production in-cluster (default) |
+
+OAuth requires `sse` or `streamable-http`.
+
+```bash
+# Local stdio (no OAuth)
+./mcp-prometheus serve
+
+# In-cluster HTTP with OAuth
+./mcp-prometheus serve --transport streamable-http --http-addr :8080 --enable-oauth
+```
+
+---
+
+## OAuth 2.1 authentication
+
+MCP Prometheus implements OAuth 2.1 ([RFC 9700][rfc9700]) using [mcp-oauth][mcp-oauth] and [Dex][dex] as the OIDC identity provider.
+
+[rfc9700]: https://datatracker.ietf.org/doc/html/rfc9700
+[mcp-oauth]: https://github.com/giantswarm/mcp-oauth
+[dex]: https://dexidp.io
+
+### Endpoints
+
+| Path | Method | Purpose |
+|---|---|---|
+| `/.well-known/oauth-authorization-server` | GET | OAuth server metadata (RFC 8414) |
+| `/.well-known/protected-resources` | GET | Protected resource metadata |
+| `/oauth/authorize` | GET | Authorization endpoint (redirects to Dex) |
+| `/oauth/callback` | GET | Dex callback |
+| `/oauth/token` | POST | Token exchange |
+| `/oauth/register` | POST | Dynamic client registration (RFC 7591) |
+| `/oauth/revoke` | POST | Token revocation |
+
+### Full OAuth flow
+
+```
+MCP Client                mcp-prometheus              Dex OIDC
+    │                           │                        │
+    │  1. GET /.well-known/…    │                        │
+    │──────────────────────────>│                        │
+    │  server metadata          │                        │
+    │<──────────────────────────│                        │
+    │                           │                        │
+    │  2. POST /oauth/register  │                        │
+    │──────────────────────────>│                        │
+    │  client_id + secret       │                        │
+    │<──────────────────────────│                        │
+    │                           │                        │
+    │  3. GET /oauth/authorize  │                        │
+    │──────────────────────────>│                        │
+    │                           │  4. redirect to Dex    │
+    │                           │───────────────────────>│
+    │<──────────────────────────────────────────────────│
+    │  browser: Dex login UI    │                        │
+    │  (user authenticates)     │                        │
+    │                           │                        │
+    │                           │  5. callback + code    │
+    │                           │<───────────────────────│
+    │                           │                        │
+    │  6. POST /oauth/token     │                        │
+    │──────────────────────────>│                        │
+    │  access_token + refresh   │                        │
+    │<──────────────────────────│                        │
+    │                           │                        │
+    │  7. MCP tool call         │                        │
+    │  Authorization: Bearer …  │                        │
+    │──────────────────────────>│                        │
+    │                           │  8. validate token     │
+    │                           │  resolve tenants       │
+    │                           │  forward to Mimir      │
+```
+
+The access token is a short-lived JWT signed by mcp-prometheus and validated on every request.
+Refresh token rotation is enabled — every refresh issues a new refresh token.
+
+### Token storage
+
+- **`memory`** (default): in-process, lost on restart. Suitable for single-replica deployments and development.
+- **`valkey`**: production-grade Redis/Valkey backend. Required for multi-replica deployments.
+
+### Allow private URLs
+
+When `DEX_ISSUER_URL` uses an internal DNS name that resolves to a private IP (RFC-1918 range),
+the built-in SSRF protection in the OIDC discovery client would reject the connection.
+
+Set `MCP_OAUTH_ALLOW_PRIVATE_URLS=true` to inject an HTTP client that allows private-IP connections
+for OIDC discovery. TLS verification is still enforced.
+
+```bash
+MCP_OAUTH_ALLOW_PRIVATE_URLS=true
+DEX_ISSUER_URL=https://dex.mc.my-cluster.example.io   # resolves to 10.x.x.x
+```
+
+In Helm: `app.oauth.allowPrivateURLs: true`
+
+### SSO token forwarding (trustedAudiences)
+
+When users connect through an upstream MCP aggregator (e.g. [muster][muster]) that has already authenticated them,
+the aggregator can forward the user's Dex ID token directly instead of starting a new OAuth flow.
+
+[muster]: https://github.com/giantswarm/muster
+
+Configure `OAUTH_TRUSTED_AUDIENCES` with a comma-separated list of the aggregator's OAuth client IDs:
+
+```bash
+OAUTH_TRUSTED_AUDIENCES=muster-client,my-aggregator
+```
+
+mcp-prometheus will:
+1. Detect that the incoming token's audience matches a trusted client ID
+2. Verify the token signature against Dex's JWKS endpoint
+3. Accept the token and proceed with tenant resolution
+
+Tokens **must** still originate from the configured Dex issuer.
+
+---
+
+## Multi-tenancy
+
+When OAuth is enabled, every tool call is scoped to the authenticated user's allowed Mimir tenant IDs.
+The user can pass an explicit `org_id` parameter; the server validates it against their allowed tenants.
+If no `org_id` is given, all allowed tenants are injected as a Mimir pipe-separated multi-tenant selector.
+
+Two resolution modes are available, selected with `--tenancy-mode` (or `app.tenancy.mode` in Helm).
+
+### GrafanaOrganization mode (default)
+
+**`--tenancy-mode grafana-organization`**
+
+Reads `GrafanaOrganization` custom resources from the Kubernetes API.
+Each CR declares which Dex groups have access (`spec.rbac`) and which Mimir tenant IDs map to it (`spec.tenants`).
+
+```yaml
+apiVersion: observability.giantswarm.io/v1alpha1
+kind: GrafanaOrganization
+metadata:
+  name: team-platform
+spec:
+  rbac:
+    - groupName: github-org:team-platform   # Dex group from LDAP/GitHub
+  tenants:
+    - prod-eu-west
+    - prod-us-east
+```
+
+When a user authenticates:
+1. The server reads the `groups` claim from their Dex token
+2. It looks up all `GrafanaOrganization` CRs where any group in `spec.rbac` matches
+3. It collects all tenant IDs from `spec.tenants` across matching CRs
+4. Results are cached per group-set for 60 seconds
+
+The Helm chart creates a `ClusterRole` + `ClusterRoleBinding` granting `get, list, watch` on `grafanaorganizations.observability.giantswarm.io` when this mode is active.
+
+### Static mode
+
+**`--tenancy-mode static`**
+
+No Kubernetes API access required. Tenants are configured statically.
+
+#### All-users: same tenants for everyone
+
+```bash
+# All authenticated users get these tenant IDs
+--static-tenants=prod-eu,prod-us
+```
+
+Helm:
+```yaml
+app:
+  tenancy:
+    mode: static
+    static:
+      tenants: "prod-eu,prod-us"
+```
+
+#### Group mapping: per-group tenant assignment
+
+When `TENANCY_STATIC_GROUP_MAP` is set (or `app.tenancy.static.groups` in Helm), tenant IDs are resolved per group:
+
+```bash
+TENANCY_STATIC_GROUP_MAP='{"team-ops":["prod-eu","prod-us"],"team-dev":["staging"]}'
+```
+
+Helm:
+```yaml
+app:
+  tenancy:
+    mode: static
+    static:
+      groups:
+        team-ops:
+          - prod-eu
+          - prod-us
+        team-dev:
+          - staging
+```
+
+The user's allowed tenants are the union of all tenants from their Dex groups.
+
+---
+
+## Available tools
+
+All tools accept optional `prometheus_url` and `org_id` parameters for per-call overrides.
+
+### Query execution
+
+| Tool | Description |
+|---|---|
+| `mcp_prometheus_execute_query` | PromQL instant query |
+| `mcp_prometheus_execute_range_query` | PromQL range query with `start`, `end`, `step` |
+
+Query tools accept: `timeout`, `limit`, `stats`, `lookback_delta`, `unlimited`.
+
+### Metrics & discovery
+
+| Tool | Description |
+|---|---|
+| `mcp_prometheus_list_metrics` | List all metric names |
+| `mcp_prometheus_get_metric_metadata` | Metadata for a specific metric |
+| `mcp_prometheus_list_label_names` | All label names |
+| `mcp_prometheus_list_label_values` | Values for a specific label |
+| `mcp_prometheus_find_series` | Find series by label matchers |
+
+### Targets & system info
+
+| Tool | Description |
+|---|---|
+| `mcp_prometheus_get_targets` | Scrape target list and health |
+| `mcp_prometheus_get_build_info` | Build/version information |
+| `mcp_prometheus_get_runtime_info` | Runtime information |
+| `mcp_prometheus_get_flags` | Runtime flags |
+| `mcp_prometheus_get_config` | Prometheus configuration |
+| `mcp_prometheus_get_tsdb_stats` | TSDB cardinality statistics |
+| `mcp_prometheus_check_ready` | Readiness check (`/-/ready`), works with Mimir |
+
+### Alerting & rules
+
+| Tool | Description |
+|---|---|
+| `mcp_prometheus_get_alerts` | Active alerts |
+| `mcp_prometheus_get_alertmanagers` | AlertManager discovery |
+| `mcp_prometheus_get_rules` | Recording and alerting rules |
+
+### Advanced
+
+| Tool | Description |
+|---|---|
+| `mcp_prometheus_query_exemplars` | Exemplar queries for trace correlation |
+| `mcp_prometheus_get_targets_metadata` | Per-target metric metadata |
+
+Large query results are automatically truncated with guidance for the AI to refine its query.
+
+---
+
+## Kubernetes deployment (Helm)
+
+### Minimal (no OAuth)
+
+```yaml
+app:
+  env:
+    - name: PROMETHEUS_URL
+      value: "http://mimir-gateway.monitoring:8080/prometheus"
+    - name: PROMETHEUS_ORGID
+      value: "my-tenant"
+```
+
+### Production with OAuth + GrafanaOrganization tenancy
+
+```yaml
+app:
+  server:
+    transport: streamable-http
+
+  oauth:
+    enabled: true
+    dexClientSecret: "..."        # stored in K8s Secret
+    encryptionKey: "..."          # openssl rand -hex 32
+    storage:
+      type: valkey
+      valkey:
+        url: "valkey:6379"
+    trustedAudiences:
+      - muster-client
+
+  tenancy:
+    mode: grafana-organization
+
+  env:
+    - name: MCP_OAUTH_ISSUER
+      value: "https://mcp-prometheus.mc.example.io"
+    - name: DEX_ISSUER_URL
+      value: "https://dex.mc.example.io"
+    - name: DEX_CLIENT_ID
+      value: "mcp-prometheus"
+    - name: DEX_REDIRECT_URL
+      value: "https://mcp-prometheus.mc.example.io/oauth/callback"
+    - name: PROMETHEUS_URL
+      value: "http://mimir-gateway.monitoring:8080/prometheus"
+```
+
+### Production with OAuth + static group mapping
+
+```yaml
+app:
+  oauth:
+    enabled: true
+    dexClientSecret: "..."
+    encryptionKey: "..."
+
+  tenancy:
+    mode: static
+    static:
+      groups:
+        team-ops:
+          - prod-eu
+          - prod-us
+        team-dev:
+          - staging
+```
+
+### Private Dex (internal DNS)
+
+When `DEX_ISSUER_URL` resolves to a private IP:
+
+```yaml
+app:
+  oauth:
+    enabled: true
+    allowPrivateURLs: true    # enables private-IP OIDC discovery
+    dexClientSecret: "..."
+    encryptionKey: "..."
+```
+
+### Valkey token storage (multi-replica)
+
+```yaml
+app:
+  oauth:
+    storage:
+      type: valkey
+      valkey:
+        url: "valkey.default:6379"
+        password: ""
+        tlsEnabled: false
+        keyPrefix: "mcp-prometheus:"
+```
+
+---
+
+## Development
+
+### Project structure
+
+```
+mcp-prometheus/
+├── cmd/                      # CLI (serve, version)
+├── internal/
+│   ├── oauth/                # OAuth 2.1 setup (Config, NewHandler)
+│   ├── server/               # ServerContext, PrometheusConfig
+│   ├── tenancy/              # TenancyResolver, GrafanaOrg + static modes
+│   ├── tools/prometheus/     # 18 MCP tool registrations
+│   └── observability/        # /metrics, /healthz, /readyz, OTel
+├── helm/mcp-prometheus/      # Helm chart
+├── go.mod
+└── README.md
+```
+
+### Building & testing
+
+```bash
+go build -o mcp-prometheus ./...
+go test ./...
+```
+
+### Code conventions
+
+- Every package has a `doc.go`
+- 80%+ unit test coverage on new code
+- Run `goimports -w . && go fmt ./...` before committing
+- Files kept under 500 lines; GoDoc on all exported members

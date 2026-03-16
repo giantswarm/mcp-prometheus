@@ -5,7 +5,7 @@ type: application
 version: 0.1.0
 appVersion: 0.0.11
 home: https://github.com/giantswarm/mcp-prometheus
-icon: https://github.com/prometheus/prometheus/raw/main/documentation/images/prometheus-logo.svg
+icon: https://s.giantswarm.io/app-icons/prometheus/1/light.svg
 sources:
   - https://github.com/giantswarm/mcp-prometheus
 keywords:

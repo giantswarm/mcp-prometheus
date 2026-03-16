@@ -138,6 +138,8 @@ spec:
             {{- if .Values.app.oauth.enabled }}
             - name: MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION
               value: {{ .Values.app.oauth.allowPublicRegistration | quote }}
+            - name: MCP_OAUTH_ALLOW_PRIVATE_URLS
+              value: {{ .Values.app.oauth.allowPrivateURLs | quote }}
             {{- if .Values.app.oauth.trustedAudiences }}
             - name: OAUTH_TRUSTED_AUDIENCES
               value: {{ .Values.app.oauth.trustedAudiences | join "," | quote }}
