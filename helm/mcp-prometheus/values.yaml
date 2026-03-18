@@ -295,3 +295,23 @@ gatewayAPI:
     #             type: PathPrefix
     #             value: /
     rules: []
+
+  # BackendTrafficPolicy configuration (Envoy Gateway specific)
+  # Configures backend connection behavior like timeouts.
+  # Only applies when using Envoy Gateway as the Gateway implementation.
+  backendTrafficPolicy:
+    # Enable BackendTrafficPolicy resource
+    enabled: false
+
+    # Request timeout for backend connections.
+    # Set to "0s" to disable the timeout entirely, which is required for
+    # long-lived SSE/streaming connections used by the MCP protocol.
+    # Without this, Envoy Gateway applies a default 15s timeout that
+    # kills SSE connections.
+    timeout: "0s"
+
+    # Additional annotations for the BackendTrafficPolicy
+    annotations: {}
+
+    # Additional labels for the BackendTrafficPolicy
+    labels: {}
