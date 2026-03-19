@@ -1,0 +1,28 @@
+{{- if and .Values.gatewayAPI.enabled .Values.gatewayAPI.backendTrafficPolicy.enabled -}}
+{{- $fullName := include "mcp-prometheus.fullname" . -}}
+# BackendTrafficPolicy is an Envoy Gateway specific resource.
+# It configures backend connection behavior like timeouts.
+# See: https://gateway.envoyproxy.io/docs/api/extension_types/#backendtrafficpolicy
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mcp-prometheus.labels" . | nindent 4 }}
+    {{- with .Values.gatewayAPI.backendTrafficPolicy.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.gatewayAPI.backendTrafficPolicy.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ $fullName }}
+  timeout:
+    http:
+      requestTimeout: {{ .Values.gatewayAPI.backendTrafficPolicy.timeout | quote }}
+{{- end }}
