@@ -32,9 +32,9 @@ func TestNewClientDefaultTransport(t *testing.T) {
 	defer mockServer.Close()
 
 	config := server.PrometheusConfig{URL: mockServer.URL}
-	client := NewClient(config, &TestLogger{})
-	if client.client == nil {
-		t.Fatal("expected client to be initialized")
+	client, err := NewClient(config, &TestLogger{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if _, err := client.ExecuteQuery(context.Background(), "up", ""); err != nil {
@@ -52,9 +52,9 @@ func TestNewClientTLSSkipVerify(t *testing.T) {
 		URL:           mockServer.URL,
 		TLSSkipVerify: true,
 	}
-	client := NewClient(config, &TestLogger{})
-	if client.client == nil {
-		t.Fatal("expected client to be initialized with TLSSkipVerify")
+	client, err := NewClient(config, &TestLogger{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if _, err := client.ExecuteQuery(context.Background(), "up", ""); err != nil {
@@ -85,9 +85,9 @@ func TestNewClientCustomCA(t *testing.T) {
 		URL:       mockServer.URL,
 		TLSCACert: tmpFile.Name(),
 	}
-	client := NewClient(config, &TestLogger{})
-	if client.client == nil {
-		t.Fatal("expected client to be initialized with custom CA")
+	client, err := NewClient(config, &TestLogger{})
+	if err != nil {
+		t.Fatalf("unexpected error with custom CA: %v", err)
 	}
 
 	if _, err := client.ExecuteQuery(context.Background(), "up", ""); err != nil {
@@ -95,21 +95,21 @@ func TestNewClientCustomCA(t *testing.T) {
 	}
 }
 
-// TestNewClientTLSCANotFound verifies that NewClient returns an uninitialised
-// client (client.client == nil) when the CA file path does not exist.
+// TestNewClientTLSCANotFound verifies that NewClient returns an error when
+// the CA file path does not exist.
 func TestNewClientTLSCANotFound(t *testing.T) {
 	config := server.PrometheusConfig{
 		URL:       "https://localhost:9090",
 		TLSCACert: "/nonexistent/path/ca.pem",
 	}
-	client := NewClient(config, &TestLogger{})
-	if client.client != nil {
-		t.Error("expected uninitialised client when CA file is missing")
+	_, err := NewClient(config, &TestLogger{})
+	if err == nil {
+		t.Error("expected error when CA file is missing, got nil")
 	}
 }
 
-// TestNewClientTLSInvalidPEM verifies that NewClient returns an uninitialised
-// client when the CA file exists but does not contain valid PEM data.
+// TestNewClientTLSInvalidPEM verifies that NewClient returns an error when
+// the CA file exists but does not contain valid PEM data.
 func TestNewClientTLSInvalidPEM(t *testing.T) {
 	tmpFile, err := os.CreateTemp(t.TempDir(), "invalid-ca-*.pem")
 	if err != nil {
@@ -122,20 +122,26 @@ func TestNewClientTLSInvalidPEM(t *testing.T) {
 		URL:       "https://localhost:9090",
 		TLSCACert: tmpFile.Name(),
 	}
-	client := NewClient(config, &TestLogger{})
-	if client.client != nil {
-		t.Error("expected uninitialised client when CA cert is invalid PEM")
+	_, err = NewClient(config, &TestLogger{})
+	if err == nil {
+		t.Error("expected error when CA cert is invalid PEM, got nil")
+	}
+}
+
+// TestNewClientEmptyURL verifies that NewClient returns an error for an empty URL.
+func TestNewClientEmptyURL(t *testing.T) {
+	_, err := NewClient(server.PrometheusConfig{}, &TestLogger{})
+	if err == nil {
+		t.Error("expected error for empty URL, got nil")
 	}
 }
 
 // TestNewClientTLSSkipVerifyWithCustomCA verifies that setting both TLSSkipVerify
-// and TLSCACert simultaneously is a valid combination: the custom CA is loaded
-// (pool is set on the TLS config) and InsecureSkipVerify is also set.
+// and TLSCACert simultaneously is a valid combination.
 func TestNewClientTLSSkipVerifyWithCustomCA(t *testing.T) {
 	mockServer := httptest.NewTLSServer(http.HandlerFunc(tlsQueryHandler))
 	defer mockServer.Close()
 
-	// Write the server's cert as the CA so the pool is valid.
 	derBytes := mockServer.TLS.Certificates[0].Certificate[0]
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 	tmpFile, err := os.CreateTemp(t.TempDir(), "ca-*.pem")
@@ -152,9 +158,9 @@ func TestNewClientTLSSkipVerifyWithCustomCA(t *testing.T) {
 		TLSSkipVerify: true,
 		TLSCACert:     tmpFile.Name(),
 	}
-	client := NewClient(config, &TestLogger{})
-	if client.client == nil {
-		t.Fatal("expected client to be initialized with TLSSkipVerify+CustomCA")
+	client, err := NewClient(config, &TestLogger{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if _, err := client.ExecuteQuery(context.Background(), "up", ""); err != nil {
@@ -163,20 +169,18 @@ func TestNewClientTLSSkipVerifyWithCustomCA(t *testing.T) {
 }
 
 // TestNewClientTLSUntrustedException verifies that a client WITHOUT TLS config
-// fails to connect to a TLS server with a self-signed cert (i.e. the default
-// transport correctly rejects it).
+// fails to connect to a TLS server with a self-signed cert.
 func TestNewClientTLSUntrustedException(t *testing.T) {
 	mockServer := httptest.NewTLSServer(http.HandlerFunc(tlsQueryHandler))
 	defer mockServer.Close()
 
-	// No TLS config — default transport should reject the self-signed cert.
 	config := server.PrometheusConfig{URL: mockServer.URL}
-	client := NewClient(config, &TestLogger{})
-	if client.client == nil {
-		t.Fatal("expected client struct to be created (URL is non-empty)")
+	client, err := NewClient(config, &TestLogger{})
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
 	}
 
-	_, err := client.ExecuteQuery(context.Background(), "up", "")
+	_, err = client.ExecuteQuery(context.Background(), "up", "")
 	if err == nil {
 		t.Error("expected TLS error when connecting without a trusted CA, got nil")
 	}

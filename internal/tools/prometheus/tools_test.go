@@ -192,7 +192,10 @@ func TestClient(t *testing.T) {
 			// Create client
 			config := server.PrometheusConfig{URL: mockServer.URL}
 			logger := &TestLogger{}
-			client := NewClient(config, logger)
+			client, err := NewClient(config, logger)
+			if err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
 
 			// Run test
 			if err := tt.testFunc(context.Background(), client); err != nil {
@@ -233,7 +236,10 @@ func TestHandleExecuteQuery(t *testing.T) {
 	}
 	defer sc.Shutdown()
 
-	client := NewClient(sc.PrometheusConfig(), sc.Logger())
+	client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
 
 	// Test valid request
 	request := mcp.CallToolRequest{
@@ -303,7 +309,10 @@ func TestHandleExecuteRangeQuery(t *testing.T) {
 	}
 	defer sc.Shutdown()
 
-	client := NewClient(sc.PrometheusConfig(), sc.Logger())
+	client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
 
 	// Test valid request
 	request := mcp.CallToolRequest{
@@ -364,7 +373,10 @@ func TestHandleGetMetricMetadata(t *testing.T) {
 	}
 	defer sc.Shutdown()
 
-	client := NewClient(sc.PrometheusConfig(), sc.Logger())
+	client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
 
 	// Test valid request
 	request := mcp.CallToolRequest{
@@ -406,7 +418,10 @@ func TestCheckReady(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			client := NewClient(server.PrometheusConfig{URL: srv.URL}, &TestLogger{})
+			client, err := NewClient(server.PrometheusConfig{URL: srv.URL}, &TestLogger{})
+			if err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
 			status, err := client.CheckReady(context.Background())
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -425,8 +440,11 @@ func TestCheckReady(t *testing.T) {
 }
 
 func TestCheckReadyConnectionError(t *testing.T) {
-	client := NewClient(server.PrometheusConfig{URL: "http://127.0.0.1:1"}, &TestLogger{})
-	_, err := client.CheckReady(context.Background())
+	client, err := NewClient(server.PrometheusConfig{URL: "http://127.0.0.1:1"}, &TestLogger{})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	_, err = client.CheckReady(context.Background())
 	if err == nil {
 		t.Fatal("expected connection error, got nil")
 	}
@@ -449,7 +467,10 @@ func TestCheckReadyMimirFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(server.PrometheusConfig{URL: srv.URL + "/prometheus"}, &TestLogger{})
+	client, err := NewClient(server.PrometheusConfig{URL: srv.URL + "/prometheus"}, &TestLogger{})
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
 	status, err := client.CheckReady(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -501,7 +522,10 @@ func TestHandleCheckReady(t *testing.T) {
 			}
 			defer sc.Shutdown()
 
-			client := NewClient(sc.PrometheusConfig(), sc.Logger())
+			client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
+			if err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
 			result, err := handleCheckReady(ctx, mcp.CallToolRequest{}, client, sc)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -528,7 +552,10 @@ func TestHandleCheckReadyConnectionError(t *testing.T) {
 	}
 	defer sc.Shutdown()
 
-	client := NewClient(sc.PrometheusConfig(), sc.Logger())
+	client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
 	result, err := handleCheckReady(ctx, mcp.CallToolRequest{}, client, sc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
