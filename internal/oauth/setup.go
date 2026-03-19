@@ -180,6 +180,10 @@ func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cf
 			return nil, nil, fmt.Errorf("oauth: create encryptor: %w", err)
 		}
 		srv.SetEncryptor(enc)
+	} else {
+		logger.Warn("MCP_OAUTH_ENCRYPTION_KEY is not set — OAuth tokens will be stored unencrypted. " +
+			"Set MCP_OAUTH_ENCRYPTION_KEY to a 64-hex-char AES-256 key for production use. " +
+			"Generate one with: openssl rand -hex 32")
 	}
 
 	handler := mcpoauth.NewHandler(srv, logger)
