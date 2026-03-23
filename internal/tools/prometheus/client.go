@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -61,11 +62,11 @@ type Client struct {
 	client     v1.API
 	httpClient *http.Client // for raw HTTP calls (health/ready endpoints)
 	config     server.PrometheusConfig
-	logger     server.Logger
+	logger     *slog.Logger
 }
 
 // NewClient creates a new Prometheus client using the official client library
-func NewClient(config server.PrometheusConfig, logger server.Logger) *Client {
+func NewClient(config server.PrometheusConfig, logger *slog.Logger) *Client {
 	logger.Debug("Creating new Prometheus client", "url", config.URL, "orgID", config.OrgID)
 
 	// Validate URL

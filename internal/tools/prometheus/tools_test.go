@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,13 +17,10 @@ import (
 	"github.com/giantswarm/mcp-prometheus/internal/server"
 )
 
-// TestLogger implements server.Logger for testing
-type TestLogger struct{}
-
-func (l *TestLogger) Debug(msg string, args ...interface{}) {}
-func (l *TestLogger) Info(msg string, args ...interface{})  {}
-func (l *TestLogger) Warn(msg string, args ...interface{})  {}
-func (l *TestLogger) Error(msg string, args ...interface{}) {}
+// discardLogger returns a *slog.Logger that discards all output.
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 func TestRegisterPrometheusTools(t *testing.T) {
 	s := mcpserver.NewMCPServer("test", "1.0.0")
@@ -29,7 +28,7 @@ func TestRegisterPrometheusTools(t *testing.T) {
 	ctx := context.Background()
 	sc, err := server.NewServerContext(ctx,
 		server.WithPrometheusConfig(server.PrometheusConfig{URL: "http://localhost:9090"}),
-		server.WithLogger(&TestLogger{}),
+		server.WithSlogLogger(discardLogger()),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create server context: %v", err)
@@ -57,7 +56,7 @@ func TestRegisterPrometheusToolsWithMiddleware(t *testing.T) {
 	ctx := context.Background()
 	sc, err := server.NewServerContext(ctx,
 		server.WithPrometheusConfig(server.PrometheusConfig{URL: mockServer.URL}),
-		server.WithLogger(&TestLogger{}),
+		server.WithSlogLogger(discardLogger()),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create server context: %v", err)
@@ -191,7 +190,7 @@ func TestClient(t *testing.T) {
 
 			// Create client
 			config := server.PrometheusConfig{URL: mockServer.URL}
-			logger := &TestLogger{}
+			logger := discardLogger()
 			client := NewClient(config, logger)
 
 			// Run test
@@ -226,7 +225,7 @@ func TestHandleExecuteQuery(t *testing.T) {
 		server.WithPrometheusConfig(server.PrometheusConfig{
 			URL: mockServer.URL,
 		}),
-		server.WithLogger(&TestLogger{}),
+		server.WithSlogLogger(discardLogger()),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create server context: %v", err)
@@ -296,7 +295,7 @@ func TestHandleExecuteRangeQuery(t *testing.T) {
 		server.WithPrometheusConfig(server.PrometheusConfig{
 			URL: mockServer.URL,
 		}),
-		server.WithLogger(&TestLogger{}),
+		server.WithSlogLogger(discardLogger()),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create server context: %v", err)
@@ -357,7 +356,7 @@ func TestHandleGetMetricMetadata(t *testing.T) {
 		server.WithPrometheusConfig(server.PrometheusConfig{
 			URL: mockServer.URL,
 		}),
-		server.WithLogger(&TestLogger{}),
+		server.WithSlogLogger(discardLogger()),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create server context: %v", err)
@@ -406,7 +405,7 @@ func TestCheckReady(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			client := NewClient(server.PrometheusConfig{URL: srv.URL}, &TestLogger{})
+			client := NewClient(server.PrometheusConfig{URL: srv.URL}, discardLogger())
 			status, err := client.CheckReady(context.Background())
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -425,7 +424,7 @@ func TestCheckReady(t *testing.T) {
 }
 
 func TestCheckReadyConnectionError(t *testing.T) {
-	client := NewClient(server.PrometheusConfig{URL: "http://127.0.0.1:1"}, &TestLogger{})
+	client := NewClient(server.PrometheusConfig{URL: "http://127.0.0.1:1"}, discardLogger())
 	_, err := client.CheckReady(context.Background())
 	if err == nil {
 		t.Fatal("expected connection error, got nil")
@@ -449,7 +448,7 @@ func TestCheckReadyMimirFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(server.PrometheusConfig{URL: srv.URL + "/prometheus"}, &TestLogger{})
+	client := NewClient(server.PrometheusConfig{URL: srv.URL + "/prometheus"}, discardLogger())
 	status, err := client.CheckReady(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -494,7 +493,7 @@ func TestHandleCheckReady(t *testing.T) {
 			ctx := context.Background()
 			sc, err := server.NewServerContext(ctx,
 				server.WithPrometheusConfig(server.PrometheusConfig{URL: srv.URL}),
-				server.WithLogger(&TestLogger{}),
+				server.WithSlogLogger(discardLogger()),
 			)
 			if err != nil {
 				t.Fatalf("failed to create server context: %v", err)
@@ -521,7 +520,7 @@ func TestHandleCheckReadyConnectionError(t *testing.T) {
 	ctx := context.Background()
 	sc, err := server.NewServerContext(ctx,
 		server.WithPrometheusConfig(server.PrometheusConfig{URL: "http://127.0.0.1:1"}),
-		server.WithLogger(&TestLogger{}),
+		server.WithSlogLogger(discardLogger()),
 	)
 	if err != nil {
 		t.Fatalf("failed to create server context: %v", err)

@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"testing"
 )
 
@@ -71,32 +73,7 @@ func TestOAuthAndTenancyTogether(t *testing.T) {
 	}
 }
 
-func TestIsDebugMode(t *testing.T) {
-	sc, err := NewServerContext(context.Background(), WithDebugMode(true))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !sc.IsDebugMode() {
-		t.Error("expected IsDebugMode() == true")
-	}
-}
-
-func TestSetDebugMode(t *testing.T) {
-	sc, err := NewServerContext(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sc.SetDebugMode(true)
-	if !sc.IsDebugMode() {
-		t.Error("expected IsDebugMode() == true after SetDebugMode(true)")
-	}
-	sc.SetDebugMode(false)
-	if sc.IsDebugMode() {
-		t.Error("expected IsDebugMode() == false after SetDebugMode(false)")
-	}
-}
-
-func TestLoggerDefaultNoopLogger(t *testing.T) {
+func TestLoggerDefault(t *testing.T) {
 	sc, err := NewServerContext(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -105,16 +82,16 @@ func TestLoggerDefaultNoopLogger(t *testing.T) {
 	if l == nil {
 		t.Fatal("Logger() returned nil")
 	}
-	// noopLogger methods must not panic.
+	// Default logger must not panic.
 	l.Debug("d")
 	l.Info("i")
 	l.Warn("w")
 	l.Error("e")
 }
 
-func TestWithLogger(t *testing.T) {
-	custom := &noopLogger{}
-	sc, err := NewServerContext(context.Background(), WithLogger(custom))
+func TestWithSlogLogger(t *testing.T) {
+	custom := slog.New(slog.NewTextHandler(io.Discard, nil))
+	sc, err := NewServerContext(context.Background(), WithSlogLogger(custom))
 	if err != nil {
 		t.Fatal(err)
 	}
