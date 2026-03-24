@@ -2,17 +2,11 @@ package server
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"sync"
 )
-
-// Logger interface for structured logging
-type Logger interface {
-	Debug(msg string, args ...interface{})
-	Info(msg string, args ...interface{})
-	Warn(msg string, args ...interface{})
-	Error(msg string, args ...interface{})
-}
 
 // PrometheusConfig holds the Prometheus server configuration
 type PrometheusConfig struct {
@@ -42,8 +36,7 @@ type ServerContext struct {
 	mutex  sync.RWMutex
 
 	// Configuration
-	debugMode bool
-	logger    Logger
+	logger *slog.Logger
 
 	// Prometheus configuration
 	prometheusConfig PrometheusConfig
@@ -56,15 +49,8 @@ type ServerContext struct {
 // ServerOption is a functional option for configuring ServerContext
 type ServerOption func(*ServerContext)
 
-// WithDebugMode sets whether debug logging is enabled
-func WithDebugMode(enabled bool) ServerOption {
-	return func(sc *ServerContext) {
-		sc.debugMode = enabled
-	}
-}
-
-// WithLogger sets the logger for the server context
-func WithLogger(logger Logger) ServerOption {
+// WithSlogLogger sets the structured logger for the server context.
+func WithSlogLogger(logger *slog.Logger) ServerOption {
 	return func(sc *ServerContext) {
 		sc.logger = logger
 	}
@@ -108,9 +94,9 @@ func NewServerContext(ctx context.Context, opts ...ServerOption) (*ServerContext
 		opt(sc)
 	}
 
-	// Set default logger if none provided
+	// Set default logger if none provided (discards all output)
 	if sc.logger == nil {
-		sc.logger = &noopLogger{}
+		sc.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
 	// Load Prometheus configuration from environment if not provided
@@ -136,15 +122,8 @@ func (sc *ServerContext) Context() context.Context {
 	return sc.ctx
 }
 
-// IsDebugMode returns whether debug logging is enabled
-func (sc *ServerContext) IsDebugMode() bool {
-	sc.mutex.RLock()
-	defer sc.mutex.RUnlock()
-	return sc.debugMode
-}
-
-// Logger returns the configured logger
-func (sc *ServerContext) Logger() Logger {
+// Logger returns the configured structured logger.
+func (sc *ServerContext) Logger() *slog.Logger {
 	sc.mutex.RLock()
 	defer sc.mutex.RUnlock()
 	return sc.logger
@@ -172,13 +151,6 @@ func (sc *ServerContext) TenancyResolver() TenancyResolver {
 	return sc.tenancyResolver
 }
 
-// SetDebugMode dynamically sets whether debug logging is enabled
-func (sc *ServerContext) SetDebugMode(enabled bool) {
-	sc.mutex.Lock()
-	defer sc.mutex.Unlock()
-	sc.debugMode = enabled
-}
-
 // Shutdown gracefully shuts down the server context
 func (sc *ServerContext) Shutdown() error {
 	sc.mutex.Lock()
@@ -191,11 +163,3 @@ func (sc *ServerContext) Shutdown() error {
 
 	return nil
 }
-
-// noopLogger is a logger that does nothing
-type noopLogger struct{}
-
-func (l *noopLogger) Debug(msg string, args ...interface{}) {}
-func (l *noopLogger) Info(msg string, args ...interface{})  {}
-func (l *noopLogger) Warn(msg string, args ...interface{})  {}
-func (l *noopLogger) Error(msg string, args ...interface{}) {}

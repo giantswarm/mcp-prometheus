@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -218,7 +219,7 @@ func metricsBody(t *testing.T, m *Metrics) string {
 func TestNewTracerProviderNoOpWhenEnvUnset(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 
-	tp, shutdown, err := NewTracerProvider(context.Background())
+	tp, shutdown, err := NewTracerProvider(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -241,7 +242,7 @@ func TestNewTracerProviderCustomServiceName(t *testing.T) {
 	t.Setenv("OTEL_SERVICE_NAME", "my-custom-service")
 
 	// No OTLP endpoint → still returns a no-op provider regardless of service name.
-	tp, shutdown, err := NewTracerProvider(context.Background())
+	tp, shutdown, err := NewTracerProvider(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

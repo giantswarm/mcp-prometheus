@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -24,25 +23,6 @@ import (
 	"github.com/giantswarm/mcp-prometheus/internal/tenancy"
 	"github.com/giantswarm/mcp-prometheus/internal/tools/prometheus"
 )
-
-// simpleLogger provides basic logging for the server
-type simpleLogger struct{}
-
-func (l *simpleLogger) Debug(msg string, args ...any) {
-	log.Printf("[DEBUG] %s %v", msg, args)
-}
-
-func (l *simpleLogger) Info(msg string, args ...any) {
-	log.Printf("[INFO] %s %v", msg, args)
-}
-
-func (l *simpleLogger) Warn(msg string, args ...any) {
-	log.Printf("[WARN] %s %v", msg, args)
-}
-
-func (l *simpleLogger) Error(msg string, args ...any) {
-	log.Printf("[ERROR] %s %v", msg, args)
-}
 
 // newServeCmd creates the Cobra command for starting the MCP server.
 func newServeCmd() *cobra.Command {
@@ -133,6 +113,13 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 	httpAddr, sseEndpoint, messageEndpoint, httpEndpoint string,
 	metricsAddr string, tenancyMode string, staticTenants string) error {
 
+	// Create the unified structured logger.
+	logLevel := slog.LevelInfo
+	if debugMode {
+		logLevel = slog.LevelDebug
+	}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
+
 	// Setup graceful shutdown - listen for both SIGINT and SIGTERM
 	shutdownCtx, cancel := signal.NotifyContext(context.Background(),
 		os.Interrupt, syscall.SIGTERM)
@@ -140,8 +127,7 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 
 	// Collect server context options; OAuth may append more below.
 	serverOpts := []server.ServerOption{
-		server.WithDebugMode(debugMode),
-		server.WithLogger(&simpleLogger{}),
+		server.WithSlogLogger(logger),
 	}
 
 	// OAuth 2.1 setup (SSE and streamable-http transports only).
@@ -151,14 +137,8 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 			return fmt.Errorf("--enable-oauth is not supported with stdio transport")
 		}
 
-		logLevel := slog.LevelInfo
-		if debugMode {
-			logLevel = slog.LevelDebug
-		}
-		slogLogger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
-
 		oauthCfg := oauth.ConfigFromEnv()
-		h, cleanup, err := oauth.NewHandler(shutdownCtx, oauthCfg, slogLogger)
+		h, cleanup, err := oauth.NewHandler(shutdownCtx, oauthCfg, logger)
 		if err != nil {
 			return fmt.Errorf("failed to initialise OAuth handler: %w", err)
 		}
@@ -187,7 +167,7 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 			server.WithTenancyResolver(tenancyResolver),
 		)
 
-		fmt.Printf("OAuth 2.1 authentication enabled (tenancy-mode: %s)\n", tenancyMode)
+		logger.Info("OAuth 2.1 authentication enabled", "tenancy_mode", tenancyMode)
 	}
 
 	// Create server context
@@ -197,36 +177,35 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 	}
 	defer func() {
 		if err := serverContext.Shutdown(); err != nil {
-			log.Printf("Error during server context shutdown: %v", err)
+			logger.Error("Error during server context shutdown", "error", err)
 		}
 	}()
 
 	// Log configuration
 	config := serverContext.PrometheusConfig()
-	fmt.Printf("Prometheus configuration:\n")
-	fmt.Printf("  Server URL: %s\n", config.URL)
+	authMethod := "none"
 	if config.Username != "" && config.Password != "" {
-		fmt.Printf("  Authentication: Basic auth (username: %s)\n", config.Username)
+		authMethod = fmt.Sprintf("basic (username: %s)", config.Username)
 	} else if config.Token != "" {
-		fmt.Printf("  Authentication: Bearer token\n")
-	} else {
-		fmt.Printf("  Authentication: None\n")
+		authMethod = "bearer token"
 	}
-	if config.OrgID != "" {
-		fmt.Printf("  Organization ID: %s\n", config.OrgID)
-	}
+	logger.Info("Prometheus configuration",
+		"url", config.URL,
+		"auth", authMethod,
+		"org_id", config.OrgID,
+	)
 
 	// Initialise observability (metrics + tracing)
 	metrics := observability.NewMetrics()
 	health := &observability.Health{}
 
-	tp, shutdownTracer, err := observability.NewTracerProvider(shutdownCtx)
+	tp, shutdownTracer, err := observability.NewTracerProvider(shutdownCtx, logger)
 	if err != nil {
 		return fmt.Errorf("failed to initialise OTel tracer: %w", err)
 	}
 	defer func() {
 		if err := shutdownTracer(context.Background()); err != nil {
-			log.Printf("Error flushing OTel spans: %v", err)
+			logger.Error("Error flushing OTel spans", "error", err)
 		}
 	}()
 
@@ -240,10 +219,10 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 		if err != nil {
 			return fmt.Errorf("failed to bind observability server: %w", err)
 		}
-		fmt.Printf("Observability server listening on %s\n", metricsAddr)
+		logger.Info("Observability server listening", "addr", metricsAddr)
 		go func() {
 			if err := observability.Serve(shutdownCtx, ln, mux); err != nil {
-				log.Printf("Observability server stopped: %v", err)
+				logger.Error("Observability server stopped", "error", err)
 			}
 		}()
 	}
@@ -261,16 +240,16 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 	// Mark server as ready after all tools are registered
 	health.SetReady(true)
 
-	fmt.Printf("Starting MCP Prometheus server with %s transport...\n", transport)
+	logger.Info("Starting MCP Prometheus server", "transport", transport)
 
 	// Start the appropriate server based on transport type
 	switch transport {
 	case "stdio":
-		return runStdioServer(mcpSrv)
+		return runStdioServer(mcpSrv, logger)
 	case "sse":
-		return runSSEServer(mcpSrv, httpAddr, sseEndpoint, messageEndpoint, shutdownCtx, debugMode, oauthHandler)
+		return runSSEServer(mcpSrv, httpAddr, sseEndpoint, messageEndpoint, shutdownCtx, logger, oauthHandler)
 	case "streamable-http":
-		return runStreamableHTTPServer(mcpSrv, httpAddr, httpEndpoint, shutdownCtx, debugMode, oauthHandler)
+		return runStreamableHTTPServer(mcpSrv, httpAddr, httpEndpoint, shutdownCtx, logger, oauthHandler)
 	default:
 		return fmt.Errorf("unsupported transport type: %s (supported: stdio, sse, streamable-http)", transport)
 	}
@@ -338,7 +317,7 @@ func registerOAuthRoutes(mux *http.ServeMux, h *mcpoauth.Handler, mcpPath string
 }
 
 // runStdioServer runs the server with STDIO transport
-func runStdioServer(mcpSrv *mcpserver.MCPServer) error {
+func runStdioServer(mcpSrv *mcpserver.MCPServer, logger *slog.Logger) error {
 	// Start the server in a goroutine so we can handle shutdown signals
 	serverDone := make(chan error, 1)
 	go func() {
@@ -353,29 +332,26 @@ func runStdioServer(mcpSrv *mcpserver.MCPServer) error {
 	case err := <-serverDone:
 		if err != nil {
 			return fmt.Errorf("server stopped with error: %w", err)
-		} else {
-			fmt.Println("Server stopped normally")
 		}
+		logger.Info("Server stopped normally")
 	}
 
-	fmt.Println("Server gracefully stopped")
+	logger.Info("Server gracefully stopped")
 	return nil
 }
 
 // runSSEServer runs the server with SSE transport.
 // When oauthHandler is non-nil, a custom HTTP mux is built with OAuth 2.1
 // endpoints and the SSE/message paths are protected with ValidateToken.
-func runSSEServer(mcpSrv *mcpserver.MCPServer, addr, sseEndpoint, messageEndpoint string, ctx context.Context, debugMode bool, oauthHandler *mcpoauth.Handler) error {
-	if debugMode {
-		log.Printf("[DEBUG] SSE server: addr=%s sse=%s message=%s oauth=%v", addr, sseEndpoint, messageEndpoint, oauthHandler != nil)
-	}
+func runSSEServer(mcpSrv *mcpserver.MCPServer, addr, sseEndpoint, messageEndpoint string, ctx context.Context, logger *slog.Logger, oauthHandler *mcpoauth.Handler) error {
+	logger.Debug("SSE server configuration", "addr", addr, "sse_endpoint", sseEndpoint, "message_endpoint", messageEndpoint, "oauth", oauthHandler != nil)
 
 	sseServer := mcpserver.NewSSEServer(mcpSrv,
 		mcpserver.WithSSEEndpoint(sseEndpoint),
 		mcpserver.WithMessageEndpoint(messageEndpoint),
 	)
 
-	fmt.Printf("SSE server starting on %s (sse=%s message=%s)\n", addr, sseEndpoint, messageEndpoint)
+	logger.Info("SSE server starting", "addr", addr, "sse_endpoint", sseEndpoint, "message_endpoint", messageEndpoint)
 
 	if oauthHandler != nil {
 		// OAuth path: custom mux with protected MCP routes.
@@ -384,7 +360,7 @@ func runSSEServer(mcpSrv *mcpserver.MCPServer, addr, sseEndpoint, messageEndpoin
 			sseEndpoint:     sseServer.SSEHandler(),
 			messageEndpoint: sseServer.MessageHandler(),
 		})
-		fmt.Println("  OAuth 2.1 endpoints mounted at /oauth/*")
+		logger.Info("OAuth 2.1 endpoints mounted", "path", "/oauth/*")
 		return serveHTTPWithShutdown(ctx, addr, mux)
 	}
 
@@ -399,7 +375,7 @@ func runSSEServer(mcpSrv *mcpserver.MCPServer, addr, sseEndpoint, messageEndpoin
 
 	select {
 	case <-ctx.Done():
-		fmt.Println("Shutdown signal received, stopping SSE server...")
+		logger.Info("Shutdown signal received, stopping SSE server")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := sseServer.Shutdown(shutdownCtx); err != nil {
@@ -411,18 +387,18 @@ func runSSEServer(mcpSrv *mcpserver.MCPServer, addr, sseEndpoint, messageEndpoin
 		}
 	}
 
-	fmt.Println("SSE server gracefully stopped")
+	logger.Info("SSE server gracefully stopped")
 	return nil
 }
 
 // runStreamableHTTPServer runs the server with Streamable HTTP transport.
 // When oauthHandler is non-nil, MCP requests are protected with ValidateToken.
-func runStreamableHTTPServer(mcpSrv *mcpserver.MCPServer, addr, endpoint string, ctx context.Context, debugMode bool, oauthHandler *mcpoauth.Handler) error {
+func runStreamableHTTPServer(mcpSrv *mcpserver.MCPServer, addr, endpoint string, ctx context.Context, logger *slog.Logger, oauthHandler *mcpoauth.Handler) error {
 	httpServer := mcpserver.NewStreamableHTTPServer(mcpSrv,
 		mcpserver.WithEndpointPath(endpoint),
 	)
 
-	fmt.Printf("Streamable HTTP server starting on %s (endpoint=%s)\n", addr, endpoint)
+	logger.Info("Streamable HTTP server starting", "addr", addr, "endpoint", endpoint)
 
 	if oauthHandler != nil {
 		// OAuth path: custom mux with protected MCP route.
@@ -430,7 +406,7 @@ func runStreamableHTTPServer(mcpSrv *mcpserver.MCPServer, addr, endpoint string,
 		registerOAuthRoutes(mux, oauthHandler, endpoint, map[string]http.Handler{
 			endpoint: httpServer,
 		})
-		fmt.Println("  OAuth 2.1 endpoints mounted at /oauth/*")
+		logger.Info("OAuth 2.1 endpoints mounted", "path", "/oauth/*")
 		return serveHTTPWithShutdown(ctx, addr, mux)
 	}
 
@@ -445,7 +421,7 @@ func runStreamableHTTPServer(mcpSrv *mcpserver.MCPServer, addr, endpoint string,
 
 	select {
 	case <-ctx.Done():
-		fmt.Println("Shutdown signal received, stopping HTTP server...")
+		logger.Info("Shutdown signal received, stopping HTTP server")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
@@ -457,6 +433,6 @@ func runStreamableHTTPServer(mcpSrv *mcpserver.MCPServer, addr, endpoint string,
 		}
 	}
 
-	fmt.Println("HTTP server gracefully stopped")
+	logger.Info("HTTP server gracefully stopped")
 	return nil
 }

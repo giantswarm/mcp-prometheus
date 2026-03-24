@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Unified all logging on `log/slog`. Removed the custom `server.Logger` interface, `simpleLogger`, and `noopLogger` in favour of a single `*slog.Logger` threaded through the application. All startup and lifecycle messages are now structured and written to stderr. The `--debug` flag controls the slog level.
+
 ### Fixed
 
 - Graceful shutdown timeout was `30` (30 nanoseconds) instead of `30 * time.Second`; the SSE and Streamable-HTTP servers now wait up to 30 seconds for in-flight requests to complete before exiting.
