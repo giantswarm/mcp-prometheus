@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Removed `list_metrics` tool. Agents don't use it effectively and fall back to `execute_query` successfully.
+
 ### Changed
 
 - Unified all logging on `log/slog`. Removed the custom `server.Logger` interface, `simpleLogger`, and `noopLogger` in favour of a single `*slog.Logger` threaded through the application. All startup and lifecycle messages are now structured and written to stderr. The `--debug` flag controls the slog level.
