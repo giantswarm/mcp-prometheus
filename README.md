@@ -371,7 +371,6 @@ Query tools accept: `timeout`, `limit`, `stats`, `lookback_delta`, `unlimited`.
 
 | Tool | Description |
 |---|---|
-| `mcp_prometheus_list_metrics` | List all metric names |
 | `mcp_prometheus_get_metric_metadata` | Metadata for a specific metric |
 | `mcp_prometheus_list_label_names` | All label names |
 | `mcp_prometheus_list_label_values` | Values for a specific label |
