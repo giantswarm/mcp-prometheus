@@ -124,15 +124,6 @@ func TestClient(t *testing.T) {
 			},
 		},
 		{
-			name:     "ListMetrics",
-			endpoint: "/api/v1/label/__name__/values",
-			response: `{"status": "success", "data": ["metric1", "metric2"]}`,
-			testFunc: func(ctx context.Context, c *Client) error {
-				_, err := c.ListMetrics(ctx)
-				return err
-			},
-		},
-		{
 			name:     "GetMetricMetadata",
 			endpoint: "/api/v1/metadata",
 			response: `{"status": "success", "data": {"http_requests_total": [{"type": "counter", "help": "Total HTTP requests", "unit": ""}]}}`,

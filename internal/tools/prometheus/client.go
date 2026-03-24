@@ -410,62 +410,6 @@ type QueryOptions struct {
 	LookbackDelta string
 }
 
-// ListMetrics lists all available metric names
-func (c *Client) ListMetrics(ctx context.Context) ([]string, error) {
-	return c.ListMetricsWithOptions(ctx, ListMetricsOptions{})
-}
-
-// ListMetricsOptions holds optional parameters for listing metrics
-type ListMetricsOptions struct {
-	StartTime string
-	EndTime   string
-	Matches   []string
-}
-
-// ListMetricsWithOptions lists all available metric names with filtering options
-func (c *Client) ListMetricsWithOptions(ctx context.Context, options ListMetricsOptions) ([]string, error) {
-	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	var startTime, endTime time.Time
-	var err error
-
-	if options.StartTime != "" {
-		startTime, err = time.Parse(time.RFC3339, options.StartTime)
-		if err != nil {
-			return nil, fmt.Errorf("invalid start time: %w", err)
-		}
-	}
-
-	if options.EndTime != "" {
-		endTime, err = time.Parse(time.RFC3339, options.EndTime)
-		if err != nil {
-			return nil, fmt.Errorf("invalid end time: %w", err)
-		}
-	}
-
-	labelValues, warnings, err := c.client.LabelValues(ctx, "__name__", options.Matches, startTime, endTime)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list metrics: %w", err)
-	}
-
-	if len(warnings) > 0 {
-		c.logger.Warn("List metrics returned warnings", "warnings", warnings)
-	}
-
-	// Convert model.LabelValues to []string
-	metrics := make([]string, len(labelValues))
-	for i, labelValue := range labelValues {
-		metrics[i] = string(labelValue)
-	}
-
-	return metrics, nil
-}
-
 // MetricMetadata represents metadata for a metric
 type MetricMetadata map[string]interface{}
 
