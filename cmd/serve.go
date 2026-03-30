@@ -65,7 +65,7 @@ Environment Variables:
 
 OAuth 2.1 (when --enable-oauth is set):
   MCP_OAUTH_ISSUER              - OAuth issuer URL (required)
-  MCP_OAUTH_ENCRYPTION_KEY      - AES-256-GCM key for token encryption (hex, required)
+  MCP_OAUTH_ENCRYPTION_KEY      - AES-256-GCM key for token encryption (base64, required)
   OAUTH_STORAGE                 - Storage backend: memory (default) or valkey
   VALKEY_URL                    - Valkey connection URL (when OAUTH_STORAGE=valkey)
   DEX_ISSUER_URL                - Dex OIDC issuer URL (required)

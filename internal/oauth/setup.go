@@ -3,7 +3,7 @@ package oauth
 import (
 	"context"
 	"crypto/tls"
-	"encoding/hex"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
@@ -28,7 +28,7 @@ type Config struct {
 	// Used as the OAuth issuer identifier and as the base for endpoint URLs.
 	Issuer string
 
-	// EncryptionKey is a 32-byte hex-encoded key used for AES-256-GCM token encryption.
+	// EncryptionKey is a 32-byte base64-encoded key used for AES-256-GCM token encryption.
 	// If empty, tokens are stored unencrypted (only suitable for development).
 	EncryptionKey string
 
@@ -169,10 +169,10 @@ func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cf
 	}
 
 	if cfg.EncryptionKey != "" {
-		keyBytes, err := hex.DecodeString(cfg.EncryptionKey)
+		keyBytes, err := base64.StdEncoding.DecodeString(cfg.EncryptionKey)
 		if err != nil {
 			cleanup()
-			return nil, nil, fmt.Errorf("oauth: decode MCP_OAUTH_ENCRYPTION_KEY (must be hex): %w", err)
+			return nil, nil, fmt.Errorf("oauth: decode MCP_OAUTH_ENCRYPTION_KEY (must be base64): %w", err)
 		}
 		enc, err := security.NewEncryptor(keyBytes)
 		if err != nil {
