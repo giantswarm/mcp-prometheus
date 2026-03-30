@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Graceful shutdown timeout was `30` (30 nanoseconds) instead of `30 * time.Second`; the SSE and Streamable-HTTP servers now wait up to 30 seconds for in-flight requests to complete before exiting.
 - Use icon URL that is accessible for applications.
+- OAuth encryption key format changed from hex to base64 encoding for consistency with `mcp-kubernetes`
 
 ### Added
 
@@ -26,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - PKCE, token rotation, and dynamic client registration (RFC 7591, `--allow-public-registration`)
   - Backed by Dex OIDC; supports in-memory or Valkey/Redis token storage (`OAUTH_STORAGE`)
   - `--enable-oauth` flag — SSE and streamable-http transports only
-  - Environment variables: `MCP_OAUTH_ISSUER`, `MCP_OAUTH_ENCRYPTION_KEY` (AES-256-GCM hex),
+  - Environment variables: `MCP_OAUTH_ISSUER`, `MCP_OAUTH_ENCRYPTION_KEY` (AES-256-GCM base64),
     `DEX_ISSUER_URL`, `DEX_CLIENT_ID`, `DEX_CLIENT_SECRET`, `DEX_REDIRECT_URL`
   - OAuth endpoints at `/oauth/{authorize,callback,token,register,revoke}`
 - Automatic Mimir multi-tenancy via **GrafanaOrganization** CRDs (`observability.giantswarm.io/v1alpha2`):
@@ -41,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `rbac.yaml` — ClusterRole + ClusterRoleBinding for `grafanaorganizations` (get/list/watch),
     created only when `app.oauth.enabled: true`
   - `oauth-secret.yaml` — Kubernetes Secret for `DEX_CLIENT_SECRET`, `MCP_OAUTH_ENCRYPTION_KEY`,
-    and optional `VALKEY_PASSWORD`; hex/length validation in `values.schema.json`
+    and optional `VALKEY_PASSWORD`; base64/length validation in `values.schema.json`
   - `httproute.yaml` — optional Gateway API `HTTPRoute` for Envoy/Cilium gateway deployments
   - `values.schema.json` — JSON Schema validation for all new `app.oauth.*` and `gatewayAPI.*` fields
 - Observability HTTP server (`--metrics-addr`, default `:9091`) exposing:
