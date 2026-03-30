@@ -3,7 +3,7 @@ name: mcp-prometheus
 description: A Helm chart for mcp-prometheus - MCP server for Prometheus metrics
 type: application
 version: 0.1.0
-appVersion: 0.0.11
+appVersion: 0.1.0
 home: https://github.com/giantswarm/mcp-prometheus
 icon: https://s.giantswarm.io/app-icons/prometheus/1/light.svg
 sources:
