@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-03-30
+
 ### Removed
 
 - Removed `list_metrics` tool. Agents don't use it effectively and fall back to `execute_query` successfully.
@@ -101,5 +103,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ConfigMap and Secret integration for configuration
 - Resource limits and requests properly configured
 
-[Unreleased]: https://github.com/giantswarm/mcp-prometheus/compare/v0.0.11...HEAD
+[Unreleased]: https://github.com/giantswarm/mcp-prometheus/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/giantswarm/mcp-prometheus/compare/v0.0.11...v0.1.0
 [0.0.11]: https://github.com/giantswarm/mcp-prometheus/compare/v0.0.0...v0.0.11
