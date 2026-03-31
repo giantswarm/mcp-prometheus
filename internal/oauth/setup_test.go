@@ -217,34 +217,6 @@ func TestNewHandlerWithProviderMemoryStore(t *testing.T) {
 	}
 }
 
-func TestNewHandlerWithProviderEncryptionKey(t *testing.T) {
-	p := mock.NewProvider()
-	cfg := Config{
-		Issuer:        "https://mcp.example.com",
-		EncryptionKey: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
-	}
-	h, cleanup, err := newHandlerWithProvider(context.Background(), p, cfg, slog.Default())
-	if err != nil {
-		t.Fatalf("unexpected error with valid encryption key: %v", err)
-	}
-	defer cleanup()
-	if h == nil {
-		t.Error("expected non-nil handler")
-	}
-}
-
-func TestNewHandlerWithProviderInvalidEncryptionKey(t *testing.T) {
-	p := mock.NewProvider()
-	cfg := Config{
-		Issuer:        "https://mcp.example.com",
-		EncryptionKey: "not-valid-hex!",
-	}
-	_, _, err := newHandlerWithProvider(context.Background(), p, cfg, slog.Default())
-	if err == nil {
-		t.Error("expected error for invalid (non-hex) encryption key")
-	}
-}
-
 func TestNewHandlerWithProviderShortEncryptionKey(t *testing.T) {
 	// A hex string that decodes to fewer than 32 bytes should fail at
 	// security.NewEncryptor (AES-256 requires exactly 32 bytes).

@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -61,11 +62,11 @@ type Client struct {
 	client     v1.API
 	httpClient *http.Client // for raw HTTP calls (health/ready endpoints)
 	config     server.PrometheusConfig
-	logger     server.Logger
+	logger     *slog.Logger
 }
 
 // NewClient creates a new Prometheus client using the official client library
-func NewClient(config server.PrometheusConfig, logger server.Logger) *Client {
+func NewClient(config server.PrometheusConfig, logger *slog.Logger) *Client {
 	logger.Debug("Creating new Prometheus client", "url", config.URL, "orgID", config.OrgID)
 
 	// Validate URL
@@ -407,62 +408,6 @@ type QueryOptions struct {
 	Limit         string
 	Stats         string
 	LookbackDelta string
-}
-
-// ListMetrics lists all available metric names
-func (c *Client) ListMetrics(ctx context.Context) ([]string, error) {
-	return c.ListMetricsWithOptions(ctx, ListMetricsOptions{})
-}
-
-// ListMetricsOptions holds optional parameters for listing metrics
-type ListMetricsOptions struct {
-	StartTime string
-	EndTime   string
-	Matches   []string
-}
-
-// ListMetricsWithOptions lists all available metric names with filtering options
-func (c *Client) ListMetricsWithOptions(ctx context.Context, options ListMetricsOptions) ([]string, error) {
-	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	var startTime, endTime time.Time
-	var err error
-
-	if options.StartTime != "" {
-		startTime, err = time.Parse(time.RFC3339, options.StartTime)
-		if err != nil {
-			return nil, fmt.Errorf("invalid start time: %w", err)
-		}
-	}
-
-	if options.EndTime != "" {
-		endTime, err = time.Parse(time.RFC3339, options.EndTime)
-		if err != nil {
-			return nil, fmt.Errorf("invalid end time: %w", err)
-		}
-	}
-
-	labelValues, warnings, err := c.client.LabelValues(ctx, "__name__", options.Matches, startTime, endTime)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list metrics: %w", err)
-	}
-
-	if len(warnings) > 0 {
-		c.logger.Warn("List metrics returned warnings", "warnings", warnings)
-	}
-
-	// Convert model.LabelValues to []string
-	metrics := make([]string, len(labelValues))
-	for i, labelValue := range labelValues {
-		metrics[i] = string(labelValue)
-	}
-
-	return metrics, nil
 }
 
 // MetricMetadata represents metadata for a metric

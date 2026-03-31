@@ -3,7 +3,7 @@ package observability
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"go.opentelemetry.io/otel"
@@ -25,7 +25,7 @@ const defaultServiceName = "mcp-prometheus"
 //
 // The second return value is a shutdown function that must be called on exit to
 // flush any pending spans.
-func NewTracerProvider(ctx context.Context) (trace.TracerProvider, func(context.Context) error, error) {
+func NewTracerProvider(ctx context.Context, logger *slog.Logger) (trace.TracerProvider, func(context.Context) error, error) {
 	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" {
 		return noop.NewTracerProvider(), func(context.Context) error { return nil }, nil
 	}
@@ -49,7 +49,7 @@ func NewTracerProvider(ctx context.Context) (trace.TracerProvider, func(context.
 	if err != nil {
 		// Non-fatal: fall back to the default resource, but warn so the
 		// operator knows their OTel environment variables may be misconfigured.
-		log.Printf("[WARN] OTel resource creation failed, using defaults: %v", err)
+		logger.Warn("OTel resource creation failed, using defaults", "error", err)
 		res = resource.Default()
 	}
 

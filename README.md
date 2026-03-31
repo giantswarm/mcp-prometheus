@@ -110,7 +110,7 @@ All configuration is via environment variables.
 | Variable | Default | Description |
 |---|---|---|
 | `MCP_OAUTH_ISSUER` | **required** | Public base URL of this server (e.g. `https://mcp.example.com`) |
-| `MCP_OAUTH_ENCRYPTION_KEY` | — | 32-byte hex AES-256-GCM key for token encryption (`openssl rand -hex 32`) |
+| `MCP_OAUTH_ENCRYPTION_KEY` | — | 32-byte base64 AES-256-GCM key for token encryption (`openssl rand -base64 32`) |
 | `MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION` | `false` | Allow unauthenticated dynamic client registration (dev/MCP Inspector only) |
 | `MCP_OAUTH_ALLOW_PRIVATE_URLS` | `false` | Allow OIDC discovery against Dex on private/internal IPs (see [below](#allow-private-urls)) |
 | `OAUTH_TRUSTED_AUDIENCES` | — | Comma-separated client IDs trusted for SSO token forwarding |
@@ -371,7 +371,6 @@ Query tools accept: `timeout`, `limit`, `stats`, `lookback_delta`, `unlimited`.
 
 | Tool | Description |
 |---|---|
-| `mcp_prometheus_list_metrics` | List all metric names |
 | `mcp_prometheus_get_metric_metadata` | Metadata for a specific metric |
 | `mcp_prometheus_list_label_names` | All label names |
 | `mcp_prometheus_list_label_values` | Values for a specific label |

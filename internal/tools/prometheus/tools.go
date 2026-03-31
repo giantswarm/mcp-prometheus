@@ -154,9 +154,6 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 		)...)
 
 	// Metrics discovery tools
-	registerPrometheusTools(s, client, sc, middleware, "list_metrics", "List all available metrics in Prometheus",
-		handleListMetrics, withTimeFilteringParams(withLabelMatchingParams()...)...)
-
 	registerPrometheusTools(s, client, sc, middleware, "get_metric_metadata", "Get metadata for a specific metric",
 		handleGetMetricMetadata,
 		mcp.WithString("metric", mcp.Required(), mcp.Description("The name of the metric to retrieve metadata for")),
@@ -521,56 +518,6 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 			mcp.TextContent{
 				Type: "text",
 				Text: formattedResult,
-			},
-		},
-	}, nil
-}
-
-// handleListMetrics handles the list_metrics tool with enhanced filtering
-func handleListMetrics(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
-	params := extractParams(request)
-	options := ListMetricsOptions{
-		StartTime: getStringParam(params, "start_time"),
-		EndTime:   getStringParam(params, "end_time"),
-		Matches:   extractStringArray(params, "matches"),
-	}
-
-	sc.Logger().Debug("Listing metrics", "options", options)
-
-	metrics, err := client.ListMetricsWithOptions(ctx, options)
-	if err != nil {
-		sc.Logger().Error("Failed to list metrics", "error", err)
-		return &mcp.CallToolResult{
-			IsError: true,
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("Error listing metrics: %v", err),
-				},
-			},
-		}, nil
-	}
-
-	var result string
-	if len(metrics) == 0 {
-		result = "No metrics found"
-	} else {
-		result = fmt.Sprintf("Found %d metrics:\n", len(metrics))
-		for i, metric := range metrics {
-			result += fmt.Sprintf("%d. %s\n", i+1, metric)
-			// Limit output to prevent overwhelming the response
-			if i >= 99 {
-				result += fmt.Sprintf("... and %d more metrics\n", len(metrics)-100)
-				break
-			}
-		}
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			mcp.TextContent{
-				Type: "text",
-				Text: result,
 			},
 		},
 	}, nil
