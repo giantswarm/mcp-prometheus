@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -42,6 +43,7 @@ type Resolver struct {
 	client dynamic.Interface
 	mu     sync.Mutex
 	cache  map[string]cacheEntry
+	group  singleflight.Group
 }
 
 // NewInClusterResolver creates a Resolver using in-cluster service account credentials.
@@ -77,11 +79,18 @@ func NewResolver(client dynamic.Interface) *Resolver {
 // contain at least one of the user's groups, and collects the spec.tenants[*].name
 // values from matching organisations.
 //
-// The result is deduplicated and sorted.  An empty slice means the user has no
+// The result is deduplicated and sorted. An empty slice means the user has no
 // access to any tenant (caller should return 403).
+//
+// Results are cached for [cacheTTL]. Concurrent requests for the same group set
+// are coalesced via singleflight so the Kubernetes API is called at most once
+// per cache miss. If the Kubernetes API is unavailable and a (potentially stale)
+// cached entry exists, the stale entry is returned rather than failing every
+// in-flight tool call.
 func (r *Resolver) TenantsForGroups(ctx context.Context, groups []string) ([]string, error) {
 	key := cacheKey(groups)
 
+	// Fast path: serve from cache while fresh.
 	r.mu.Lock()
 	if e, ok := r.cache[key]; ok && time.Since(e.cachedAt) < cacheTTL {
 		r.mu.Unlock()
@@ -89,16 +98,29 @@ func (r *Resolver) TenantsForGroups(ctx context.Context, groups []string) ([]str
 	}
 	r.mu.Unlock()
 
-	tenants, err := r.resolve(ctx, groups)
+	// Slow path: deduplicate concurrent misses for the same key.
+	type result struct{ tenants []string }
+	v, err, _ := r.group.Do(key, func() (interface{}, error) {
+		tenants, err := r.resolve(ctx, groups)
+		if err != nil {
+			// K8s API unavailable — serve stale cache if available.
+			r.mu.Lock()
+			e, ok := r.cache[key]
+			r.mu.Unlock()
+			if ok {
+				return result{tenants: e.tenants}, nil
+			}
+			return nil, err
+		}
+		r.mu.Lock()
+		r.cache[key] = cacheEntry{tenants: tenants, cachedAt: time.Now()}
+		r.mu.Unlock()
+		return result{tenants: tenants}, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	r.mu.Lock()
-	r.cache[key] = cacheEntry{tenants: tenants, cachedAt: time.Now()}
-	r.mu.Unlock()
-
-	return tenants, nil
+	return v.(result).tenants, nil
 }
 
 // resolve fetches all GrafanaOrganization objects and matches them against groups.
@@ -166,11 +188,12 @@ func matchesRBAC(rbacRaw interface{}, groupSet map[string]struct{}) bool {
 }
 
 // cacheKey creates a stable string key from a sorted, deduplicated list of groups.
+// json.Marshal on []string never returns an error; the blank identifier is safe.
 func cacheKey(groups []string) string {
 	cp := make([]string, len(groups))
 	copy(cp, groups)
 	sort.Strings(cp)
-	b, _ := json.Marshal(cp)
+	b, _ := json.Marshal(cp) //nolint:errcheck // []string marshal is infallible
 	return string(b)
 }
 

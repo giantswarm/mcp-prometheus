@@ -41,6 +41,10 @@ func NewResolverForMode(mode Mode, staticTenants []string, groupMap map[string][
 	case ModeGrafanaOrganization:
 		return NewInClusterResolver()
 	case ModeStatic:
+		if len(staticTenants) == 0 && len(groupMap) == 0 {
+			return nil, fmt.Errorf("tenancy: static mode requires at least one tenant or group mapping; " +
+				"set MCP_STATIC_TENANTS or MCP_STATIC_GROUPS, otherwise every authenticated request will be denied")
+		}
 		return NewStaticResolver(staticTenants, groupMap), nil
 	default:
 		return nil, fmt.Errorf("tenancy: unknown mode %q (valid: grafana-organization, static)", mode)
