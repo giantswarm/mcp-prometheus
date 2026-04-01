@@ -135,10 +135,15 @@ func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.
 // RegisterPrometheusTools registers Prometheus-related tools with the MCP server.
 // Pass optional ToolMiddleware values to instrument every tool call (e.g. metrics, tracing).
 func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, middleware ...ToolMiddleware) error {
-	// Create Prometheus client
-	client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
-	if err != nil {
-		return fmt.Errorf("tools: create Prometheus client: %w", err)
+	// Create a default Prometheus client if a URL is configured at startup.
+	// PROMETHEUS_URL is optional — tools accept prometheus_url per-request instead.
+	var client *Client
+	if sc.PrometheusConfig().URL != "" {
+		var err error
+		client, err = NewClient(sc.PrometheusConfig(), sc.Logger())
+		if err != nil {
+			return fmt.Errorf("tools: create Prometheus client: %w", err)
+		}
 	}
 
 	// Query execution tools
