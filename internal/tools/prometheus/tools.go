@@ -120,10 +120,21 @@ func withDynamicPrometheusClient(handler PrometheusHandler, client *Client, sc *
 	}
 }
 
-// Helper function to create and register a tool with common patterns
+// Helper function to create and register a tool with common patterns.
+//
+// All Prometheus tools in this server are read-only (they query Prometheus/Mimir
+// without mutating state) and target a bounded Prometheus/Mimir endpoint rather
+// than the open web, so readOnlyHint is always true and openWorldHint is always
+// false. destructiveHint and idempotentHint are omitted because they are only
+// meaningful when readOnlyHint is false.
 func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.ServerContext, middleware []ToolMiddleware, toolName string, description string, handler PrometheusHandler, options ...mcp.ToolOption) {
 	allOptions := withPrometheusConnectionParams(options...)
-	tool := mcp.NewTool(toolName, append([]mcp.ToolOption{mcp.WithDescription(description)}, allOptions...)...)
+	baseOptions := []mcp.ToolOption{
+		mcp.WithDescription(description),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithOpenWorldHintAnnotation(false),
+	}
+	tool := mcp.NewTool(toolName, append(baseOptions, allOptions...)...)
 
 	h := withDynamicPrometheusClient(handler, client, sc)
 	for _, mw := range middleware {
