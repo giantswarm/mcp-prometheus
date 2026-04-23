@@ -4,4 +4,4 @@ generate-metadata: true
 chart-dir: ./helm/mcp-prometheus
 destination: ./build
 # CI overwrites this, check .circleci/config.yaml
-catalog-base-url: https://giantswarm.github.io/giantswarm-catalog/ 
+catalog-base-url: https://giantswarm.github.io/giantswarm-catalog/
