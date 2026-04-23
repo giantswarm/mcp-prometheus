@@ -67,4 +67,4 @@ Create the image path
 */}}
 {{- define "mcp-prometheus.image" -}}
 {{- printf "%s/%s:%s" .Values.image.registry .Values.image.repository (.Values.image.tag | default .Chart.AppVersion) }}
-{{- end }} 
+{{- end }}
