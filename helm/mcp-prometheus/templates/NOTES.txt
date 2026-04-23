@@ -65,7 +65,7 @@
    {{- if ne .Values.app.server.transport "stdio" }}
    # Port-forward to test the server
    kubectl port-forward svc/{{ include "mcp-prometheus.fullname" . }} 8080:{{ .Values.service.port }} -n {{ .Release.Namespace }}
-   
+
    # Test the MCP tools list endpoint
    curl -X POST http://localhost:8080{{ .Values.app.server.httpEndpoint }} \
      -H "Content-Type: application/json" \
@@ -88,7 +88,7 @@
    The deployment includes intelligent MCP-specific health probes:
    - Liveness Probe: Tests MCP JSON-RPC functionality every {{ .Values.livenessProbe.periodSeconds | default 30 }}s
    - Readiness Probe: Verifies MCP tools/list endpoint every {{ .Values.readinessProbe.periodSeconds | default 10 }}s
-   
+
    Monitor application health using:
    - Pod status: kubectl get pods -n {{ .Release.Namespace }}
    - Health probe status: kubectl describe pod -n {{ .Release.Namespace }} -l "{{ include "mcp-prometheus.selectorLabels" . }}"
@@ -104,4 +104,4 @@
 7. For more information, visit:
    - Project: https://github.com/giantswarm/mcp-prometheus
    - Documentation: https://github.com/giantswarm/mcp-prometheus/blob/main/README.md
-   - Helm Chart README: https://github.com/giantswarm/mcp-prometheus/blob/main/helm/mcp-prometheus/README.md 
+   - Helm Chart README: https://github.com/giantswarm/mcp-prometheus/blob/main/helm/mcp-prometheus/README.md
