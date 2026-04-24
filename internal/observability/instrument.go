@@ -10,6 +10,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// statusError is the metric label value used when a tool call fails.
+const statusError = "error"
+
 // Instrumentor wraps MCP tool handlers to record Prometheus metrics and
 // OpenTelemetry spans for every tool invocation.
 type Instrumentor struct {
@@ -47,16 +50,16 @@ func (i *Instrumentor) Wrap(
 		status := "success"
 		switch {
 		case err != nil:
-			status = "error"
+			status = statusError
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 		case result == nil:
 			// Handlers must return a non-nil result when err is nil; treat this
 			// as an internal error so it shows up in metrics and traces.
-			status = "error"
+			status = statusError
 			span.SetStatus(codes.Error, "handler returned nil result with no error")
 		case result.IsError:
-			status = "error"
+			status = statusError
 			span.SetStatus(codes.Error, "tool returned an error result")
 		}
 

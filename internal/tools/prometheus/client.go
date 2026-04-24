@@ -77,7 +77,7 @@ func NewClient(config server.PrometheusConfig, logger *slog.Logger) (*Client, er
 	}
 
 	// Start with default transport, or a custom TLS transport when needed
-	var roundTripper http.RoundTripper = http.DefaultTransport
+	var roundTripper = http.DefaultTransport
 
 	if config.TLSSkipVerify || config.TLSCACert != "" {
 		tlsConfig := &tls.Config{
@@ -147,7 +147,7 @@ type QueryResult struct {
 // ExecuteQuery executes an instant PromQL query
 func (c *Client) ExecuteQuery(ctx context.Context, query string, timeParam string) (*QueryResult, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	var queryTime time.Time
@@ -188,7 +188,7 @@ func (c *Client) ExecuteQuery(ctx context.Context, query string, timeParam strin
 // ExecuteQueryWithOptions executes an instant PromQL query with additional options
 func (c *Client) ExecuteQueryWithOptions(ctx context.Context, query string, timeParam string, options QueryOptions) (*QueryResult, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	var queryTime time.Time
@@ -256,7 +256,7 @@ func (c *Client) ExecuteQueryWithOptions(ctx context.Context, query string, time
 // ExecuteRangeQuery executes a range PromQL query
 func (c *Client) ExecuteRangeQuery(ctx context.Context, query, start, end, step string) (*QueryResult, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	// Parse start time
@@ -304,7 +304,7 @@ func (c *Client) ExecuteRangeQuery(ctx context.Context, query, start, end, step 
 // ExecuteRangeQueryWithOptions executes a range PromQL query with additional options
 func (c *Client) ExecuteRangeQueryWithOptions(ctx context.Context, query, start, end, step string, options QueryOptions) (*QueryResult, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	// Parse start time
@@ -400,7 +400,7 @@ type MetricMetadataOptions struct {
 // GetMetricMetadataWithOptions gets metadata for a specific metric with options
 func (c *Client) GetMetricMetadataWithOptions(ctx context.Context, metric string, options MetricMetadataOptions) (MetricMetadata, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -441,7 +441,7 @@ type TargetsResult struct {
 // GetTargets gets information about scrape targets
 func (c *Client) GetTargets(ctx context.Context) (*TargetsResult, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -492,7 +492,7 @@ type LabelNamesResult struct {
 // ListLabelNames gets all available label names
 func (c *Client) ListLabelNames(ctx context.Context, options LabelOptions) (*LabelNamesResult, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -557,7 +557,7 @@ type LabelOptions struct {
 // ListLabelValues gets values for a specific label
 func (c *Client) ListLabelValues(ctx context.Context, label string, options LabelOptions) (*LabelValuesResult, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -627,7 +627,7 @@ type SeriesOptions struct {
 // FindSeries finds series by label matchers
 func (c *Client) FindSeries(ctx context.Context, matches []string, options SeriesOptions) (*SeriesResult, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -687,7 +687,7 @@ func (c *Client) FindSeries(ctx context.Context, matches []string, options Serie
 // GetRules gets recording and alerting rules
 func (c *Client) GetRules(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -704,7 +704,7 @@ func (c *Client) GetRules(ctx context.Context) (interface{}, error) {
 // GetAlerts gets active alerts
 func (c *Client) GetAlerts(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -721,7 +721,7 @@ func (c *Client) GetAlerts(ctx context.Context) (interface{}, error) {
 // GetAlertManagers gets AlertManager discovery info
 func (c *Client) GetAlertManagers(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -738,7 +738,7 @@ func (c *Client) GetAlertManagers(ctx context.Context) (interface{}, error) {
 // GetConfig gets Prometheus configuration
 func (c *Client) GetConfig(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -755,7 +755,7 @@ func (c *Client) GetConfig(ctx context.Context) (interface{}, error) {
 // GetFlags gets runtime flags
 func (c *Client) GetFlags(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -772,7 +772,7 @@ func (c *Client) GetFlags(ctx context.Context) (interface{}, error) {
 // GetBuildInfo gets build information
 func (c *Client) GetBuildInfo(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -789,7 +789,7 @@ func (c *Client) GetBuildInfo(ctx context.Context) (interface{}, error) {
 // GetRuntimeInfo gets runtime information
 func (c *Client) GetRuntimeInfo(ctx context.Context) (interface{}, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -806,7 +806,7 @@ func (c *Client) GetRuntimeInfo(ctx context.Context) (interface{}, error) {
 // GetTSDBStats gets TSDB cardinality statistics
 func (c *Client) GetTSDBStats(ctx context.Context, options TSDBOptions) (interface{}, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -836,7 +836,7 @@ type TSDBOptions struct {
 // QueryExemplars queries exemplars for traces
 func (c *Client) QueryExemplars(ctx context.Context, query, start, end string) (interface{}, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -882,7 +882,7 @@ type HealthStatus struct {
 // route for.
 func (c *Client) CheckReady(ctx context.Context) (*HealthStatus, error) {
 	if c.httpClient == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	parsed, err := url.Parse(c.config.URL)
@@ -914,7 +914,7 @@ func (c *Client) doReadyCheck(ctx context.Context, readyURL string) (*HealthStat
 	if err != nil {
 		return nil, fmt.Errorf("readiness check request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
 	if err != nil {
 		c.logger.Warn("Failed to read readiness response body", "error", err)
@@ -929,7 +929,7 @@ func (c *Client) doReadyCheck(ctx context.Context, readyURL string) (*HealthStat
 // GetTargetsMetadata gets metadata about metrics from specific targets
 func (c *Client) GetTargetsMetadata(ctx context.Context, matchTarget, metric, limit string) (interface{}, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("Prometheus client not initialized")
+		return nil, fmt.Errorf("prometheus client not initialized")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)

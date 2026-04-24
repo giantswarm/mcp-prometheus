@@ -278,7 +278,10 @@ func serveHTTPWithShutdown(ctx context.Context, addr string, handler http.Handle
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
 
-	srv := &http.Server{Handler: handler}
+	srv := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -328,13 +331,10 @@ func runStdioServer(mcpSrv *mcpserver.MCPServer, logger *slog.Logger) error {
 	}()
 
 	// Wait for server completion
-	select {
-	case err := <-serverDone:
-		if err != nil {
-			return fmt.Errorf("server stopped with error: %w", err)
-		}
-		logger.Info("Server stopped normally")
+	if err := <-serverDone; err != nil {
+		return fmt.Errorf("server stopped with error: %w", err)
 	}
+	logger.Info("Server stopped normally")
 
 	logger.Info("Server gracefully stopped")
 	return nil

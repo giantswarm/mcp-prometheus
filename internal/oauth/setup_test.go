@@ -3,14 +3,15 @@ package oauth
 import (
 	"context"
 	"log/slog"
-	"os"
 	"testing"
 
 	"github.com/giantswarm/mcp-oauth/providers/mock"
 )
 
 func TestConfigFromEnvDefaults(t *testing.T) {
-	// Unset any OAuth env vars to test defaults.
+	// Clear any OAuth env vars to test defaults. ConfigFromEnv uses os.Getenv,
+	// which returns "" whether the var is unset or empty, so t.Setenv(key, "")
+	// is equivalent and auto-restores at test end.
 	for _, key := range []string{
 		"MCP_OAUTH_ISSUER", "MCP_OAUTH_ENCRYPTION_KEY",
 		"MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION",
@@ -19,7 +20,7 @@ func TestConfigFromEnvDefaults(t *testing.T) {
 		"VALKEY_TLS_ENABLED", "VALKEY_KEY_PREFIX",
 		"DEX_ISSUER_URL", "DEX_CLIENT_ID", "DEX_CLIENT_SECRET", "DEX_REDIRECT_URL",
 	} {
-		os.Unsetenv(key)
+		t.Setenv(key, "")
 	}
 
 	cfg := ConfigFromEnv()
@@ -39,29 +40,18 @@ func TestConfigFromEnvDefaults(t *testing.T) {
 }
 
 func TestConfigFromEnvReadsValues(t *testing.T) {
-	os.Setenv("MCP_OAUTH_ISSUER", "https://issuer.example.com")
-	os.Setenv("MCP_OAUTH_ENCRYPTION_KEY", "deadbeef")
-	os.Setenv("MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION", "true")
-	os.Setenv("OAUTH_STORAGE", "valkey")
-	os.Setenv("VALKEY_URL", "valkey://localhost:6379")
-	os.Setenv("VALKEY_PASSWORD", "secret")
-	os.Setenv("VALKEY_TLS_ENABLED", "true")
-	os.Setenv("VALKEY_KEY_PREFIX", "myapp:")
-	os.Setenv("DEX_ISSUER_URL", "https://dex.example.com")
-	os.Setenv("DEX_CLIENT_ID", "mcp-prometheus")
-	os.Setenv("DEX_CLIENT_SECRET", "dexsecret")
-	os.Setenv("DEX_REDIRECT_URL", "https://app.example.com/oauth/callback")
-	defer func() {
-		for _, key := range []string{
-			"MCP_OAUTH_ISSUER", "MCP_OAUTH_ENCRYPTION_KEY",
-			"MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION",
-			"OAUTH_STORAGE", "VALKEY_URL", "VALKEY_PASSWORD",
-			"VALKEY_TLS_ENABLED", "VALKEY_KEY_PREFIX",
-			"DEX_ISSUER_URL", "DEX_CLIENT_ID", "DEX_CLIENT_SECRET", "DEX_REDIRECT_URL",
-		} {
-			os.Unsetenv(key)
-		}
-	}()
+	t.Setenv("MCP_OAUTH_ISSUER", "https://issuer.example.com")
+	t.Setenv("MCP_OAUTH_ENCRYPTION_KEY", "deadbeef")
+	t.Setenv("MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION", "true")
+	t.Setenv("OAUTH_STORAGE", "valkey")
+	t.Setenv("VALKEY_URL", "valkey://localhost:6379")
+	t.Setenv("VALKEY_PASSWORD", "secret")
+	t.Setenv("VALKEY_TLS_ENABLED", "true")
+	t.Setenv("VALKEY_KEY_PREFIX", "myapp:")
+	t.Setenv("DEX_ISSUER_URL", "https://dex.example.com")
+	t.Setenv("DEX_CLIENT_ID", "mcp-prometheus")
+	t.Setenv("DEX_CLIENT_SECRET", "dexsecret")
+	t.Setenv("DEX_REDIRECT_URL", "https://app.example.com/oauth/callback")
 
 	cfg := ConfigFromEnv()
 
@@ -95,8 +85,7 @@ func TestConfigFromEnvReadsValues(t *testing.T) {
 }
 
 func TestConfigFromEnvAllowPrivateURLs(t *testing.T) {
-	os.Setenv("MCP_OAUTH_ALLOW_PRIVATE_URLS", "true")
-	defer os.Unsetenv("MCP_OAUTH_ALLOW_PRIVATE_URLS")
+	t.Setenv("MCP_OAUTH_ALLOW_PRIVATE_URLS", "true")
 
 	cfg := ConfigFromEnv()
 	if !cfg.AllowPrivateURLs {

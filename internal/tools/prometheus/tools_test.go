@@ -17,6 +17,8 @@ import (
 	"github.com/giantswarm/mcp-prometheus/internal/server"
 )
 
+const apiQueryPath = "/api/v1/query"
+
 // discardLogger returns a *slog.Logger that discards all output.
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -33,7 +35,7 @@ func TestRegisterPrometheusTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create server context: %v", err)
 	}
-	defer sc.Shutdown()
+	defer func() { _ = sc.Shutdown() }()
 
 	if err := RegisterPrometheusTools(s, sc); err != nil {
 		t.Fatalf("Failed to register tools: %v", err)
@@ -42,8 +44,8 @@ func TestRegisterPrometheusTools(t *testing.T) {
 
 func TestRegisterPrometheusToolsWithMiddleware(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/query" {
-			json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+		if r.URL.Path == apiQueryPath {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"status": "success",
 				"data":   map[string]interface{}{"resultType": "vector", "result": []interface{}{}},
 			})
@@ -61,7 +63,7 @@ func TestRegisterPrometheusToolsWithMiddleware(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create server context: %v", err)
 	}
-	defer sc.Shutdown()
+	defer func() { _ = sc.Shutdown() }()
 
 	// Middleware that records the tool name for every invocation through the
 	// server's dispatch path.
@@ -172,7 +174,7 @@ func TestClient(t *testing.T) {
 				if r.URL.Path == tt.endpoint {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(tt.response))
+					_, _ = w.Write([]byte(tt.response))
 				} else {
 					w.WriteHeader(http.StatusNotFound)
 				}
@@ -197,7 +199,7 @@ func TestClient(t *testing.T) {
 func TestHandleExecuteQuery(t *testing.T) {
 	// Create mock server
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/query" {
+		if r.URL.Path == apiQueryPath {
 			response := map[string]interface{}{
 				"status": "success",
 				"data": map[string]interface{}{
@@ -205,7 +207,7 @@ func TestHandleExecuteQuery(t *testing.T) {
 					"result":     []interface{}{},
 				},
 			}
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -223,7 +225,7 @@ func TestHandleExecuteQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create server context: %v", err)
 	}
-	defer sc.Shutdown()
+	defer func() { _ = sc.Shutdown() }()
 
 	client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
 	if err != nil {
@@ -278,7 +280,7 @@ func TestHandleExecuteRangeQuery(t *testing.T) {
 					"result":     []interface{}{},
 				},
 			}
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -296,7 +298,7 @@ func TestHandleExecuteRangeQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create server context: %v", err)
 	}
-	defer sc.Shutdown()
+	defer func() { _ = sc.Shutdown() }()
 
 	client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
 	if err != nil {
@@ -342,7 +344,7 @@ func TestHandleGetMetricMetadata(t *testing.T) {
 					},
 				},
 			}
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -360,7 +362,7 @@ func TestHandleGetMetricMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create server context: %v", err)
 	}
-	defer sc.Shutdown()
+	defer func() { _ = sc.Shutdown() }()
 
 	client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
 	if err != nil {
@@ -403,7 +405,7 @@ func TestCheckReady(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.body)) //nolint:errcheck
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 
@@ -446,10 +448,10 @@ func TestCheckReadyMimirFallback(t *testing.T) {
 		switch r.URL.Path {
 		case "/-/ready":
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("not found")) //nolint:errcheck
+			_, _ = w.Write([]byte("not found"))
 		case "/ready":
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("ready")) //nolint:errcheck
+			_, _ = w.Write([]byte("ready"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -497,7 +499,7 @@ func TestHandleCheckReady(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.body)) //nolint:errcheck
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 
@@ -509,7 +511,7 @@ func TestHandleCheckReady(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create server context: %v", err)
 			}
-			defer sc.Shutdown()
+			defer func() { _ = sc.Shutdown() }()
 
 			client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
 			if err != nil {
@@ -539,7 +541,7 @@ func TestHandleCheckReadyConnectionError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create server context: %v", err)
 	}
-	defer sc.Shutdown()
+	defer func() { _ = sc.Shutdown() }()
 
 	client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
 	if err != nil {
