@@ -21,7 +21,7 @@ func tlsQueryHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/api/v1/query" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(queryResponse)) //nolint:errcheck
+		_, _ = w.Write([]byte(queryResponse))
 	} else {
 		w.WriteHeader(http.StatusNotFound)
 	}
@@ -81,7 +81,7 @@ func TestNewClientCustomCA(t *testing.T) {
 	if _, err := tmpFile.Write(certPEM); err != nil {
 		t.Fatalf("failed to write CA cert: %v", err)
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	config := server.PrometheusConfig{
 		URL:       mockServer.URL,
@@ -117,8 +117,8 @@ func TestNewClientTLSInvalidPEM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
-	tmpFile.WriteString("this is definitely not valid PEM content") //nolint:errcheck
-	tmpFile.Close()
+	_, _ = tmpFile.WriteString("this is definitely not valid PEM content")
+	_ = tmpFile.Close()
 
 	config := server.PrometheusConfig{
 		URL:       "https://localhost:9090",
@@ -153,7 +153,7 @@ func TestNewClientTLSSkipVerifyWithCustomCA(t *testing.T) {
 	if _, err := tmpFile.Write(certPEM); err != nil {
 		t.Fatalf("failed to write CA cert: %v", err)
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	config := server.PrometheusConfig{
 		URL:           mockServer.URL,

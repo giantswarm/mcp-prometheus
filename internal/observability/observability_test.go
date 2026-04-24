@@ -197,9 +197,9 @@ func TestInstrumentorWrapNilResult(t *testing.T) {
 func TestInstrumentorWrapRecordsLatency(t *testing.T) {
 	inst := noopInstrumentor()
 
-	inst.Wrap("latency_tool", func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	_, _ = inst.Wrap("latency_tool", func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return &mcp.CallToolResult{}, nil
-	})(context.Background(), mcp.CallToolRequest{}) //nolint:errcheck
+	})(context.Background(), mcp.CallToolRequest{})
 
 	if !strings.Contains(metricsBody(t, inst.metrics), "mcp_prometheus_tool_call_duration_seconds") {
 		t.Error("expected duration histogram in metrics output")
@@ -298,7 +298,7 @@ func TestServeExitsWhenListenerClosed(t *testing.T) {
 		t.Fatalf("could not create listener: %v", err)
 	}
 	// Close the listener immediately; Serve should detect this and return via errCh.
-	ln.Close()
+	_ = ln.Close()
 
 	ctx := context.Background()
 	done := make(chan error, 1)
@@ -340,8 +340,8 @@ func TestRunServerShutdownOnContextCancel(t *testing.T) {
 		cancel()
 		t.Fatalf("GET /healthz failed: %v", err)
 	}
-	io.Copy(io.Discard, resp.Body) //nolint:errcheck
-	resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
 
 	cancel()
 
@@ -363,7 +363,7 @@ func freeTCPAddr() (string, error) {
 		return "", err
 	}
 	addr := ln.Addr().String()
-	ln.Close()
+	_ = ln.Close()
 	return addr, nil
 }
 
@@ -373,8 +373,8 @@ func waitForHTTP(addr string, timeout time.Duration) error {
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(fmt.Sprintf("http://%s/healthz", addr))
 		if err == nil {
-			io.Copy(io.Discard, resp.Body) //nolint:errcheck
-			resp.Body.Close()
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
 			return nil
 		}
 		time.Sleep(10 * time.Millisecond)

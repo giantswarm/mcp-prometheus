@@ -82,22 +82,25 @@ type Config struct {
 	AllowPrivateURLs bool
 }
 
+// envTrue is the string value that enables a boolean env var.
+const envTrue = "true"
+
 // ConfigFromEnv builds a Config by reading the standard environment variables.
 func ConfigFromEnv() Config {
 	cfg := Config{
 		Issuer:                  os.Getenv("MCP_OAUTH_ISSUER"),
 		EncryptionKey:           os.Getenv("MCP_OAUTH_ENCRYPTION_KEY"),
-		AllowPublicRegistration: os.Getenv("MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION") == "true",
+		AllowPublicRegistration: os.Getenv("MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION") == envTrue,
 		StorageType:             os.Getenv("OAUTH_STORAGE"),
 		ValkeyURL:               os.Getenv("VALKEY_URL"),
 		ValkeyPassword:          os.Getenv("VALKEY_PASSWORD"),
-		ValkeyTLS:               os.Getenv("VALKEY_TLS_ENABLED") == "true",
+		ValkeyTLS:               os.Getenv("VALKEY_TLS_ENABLED") == envTrue,
 		ValkeyKeyPrefix:         os.Getenv("VALKEY_KEY_PREFIX"),
 		DexIssuerURL:            os.Getenv("DEX_ISSUER_URL"),
 		DexClientID:             os.Getenv("DEX_CLIENT_ID"),
 		DexClientSecret:         os.Getenv("DEX_CLIENT_SECRET"),
 		DexRedirectURL:          os.Getenv("DEX_REDIRECT_URL"),
-		AllowPrivateURLs:        os.Getenv("MCP_OAUTH_ALLOW_PRIVATE_URLS") == "true",
+		AllowPrivateURLs:        os.Getenv("MCP_OAUTH_ALLOW_PRIVATE_URLS") == envTrue,
 	}
 	if v := os.Getenv("OAUTH_TRUSTED_AUDIENCES"); v != "" {
 		for _, a := range strings.Split(v, ",") {

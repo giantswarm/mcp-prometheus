@@ -21,7 +21,7 @@ func (h *Health) HealthzHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok")) //nolint:errcheck
+		_, _ = w.Write([]byte("ok"))
 	}
 }
 
@@ -33,10 +33,10 @@ func (h *Health) ReadyzHandler() http.HandlerFunc {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		if h.ready.Load() {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("ready")) //nolint:errcheck
+			_, _ = w.Write([]byte("ready"))
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("not ready")) //nolint:errcheck
+			_, _ = w.Write([]byte("not ready"))
 		}
 	}
 }
