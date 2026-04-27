@@ -411,4 +411,4 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](../../
 - [Project Repository](https://github.com/giantswarm/mcp-prometheus)
 - [Giant Swarm Documentation](https://docs.giantswarm.io/)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
-- [Prometheus Documentation](https://prometheus.io/docs/) 
+- [Prometheus Documentation](https://prometheus.io/docs/)
