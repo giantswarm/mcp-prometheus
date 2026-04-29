@@ -6,6 +6,7 @@ workflows:
   build:
     jobs:
     - architect/go-build:
+        context: architect
         name: go-build-mcp-prometheus
         binary: mcp-prometheus
         filters:
