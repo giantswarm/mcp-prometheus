@@ -119,6 +119,74 @@ type ToolMiddleware func(
 	next func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error),
 ) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
 
+// adviceByTool maps each Prometheus tool to the advice text appended to its
+// truncated output. Tools that do not appear here fall back to bulkAdvice.
+var adviceByTool = map[string]string{
+	"execute_query":        TruncationAdvice,
+	"execute_range_query":  TruncationAdvice,
+	"get_metric_metadata":  discoveryAdvice,
+	"list_label_names":     discoveryAdvice,
+	"list_label_values":    discoveryAdvice,
+	"find_series":          discoveryAdvice,
+	"query_exemplars":      discoveryAdvice,
+	"get_targets_metadata": discoveryAdvice,
+	"get_targets":          bulkAdvice,
+	"get_rules":            bulkAdvice,
+	"get_alerts":           bulkAdvice,
+	"get_config":           bulkAdvice,
+	"get_tsdb_stats":       bulkAdvice,
+}
+
+// truncationMiddleware caps oversized TextContent in tool results at
+// MaxResultLength and appends per-tool advice. It is applied uniformly to
+// every registered Prometheus tool so individual handlers can return raw
+// formatted output without worrying about size.
+//
+// Honours the "unlimited": "true" request argument: when set, the middleware
+// returns the upstream result unchanged. This escape hatch is only documented
+// for execute_query / execute_range_query, but the middleware accepts it on
+// any tool.
+func truncationMiddleware(
+	name string,
+	next func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error),
+) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	advice, ok := adviceByTool[name]
+	if !ok {
+		advice = bulkAdvice
+	}
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		res, err := next(ctx, req)
+		if err != nil || res == nil {
+			return res, err
+		}
+		if isUnlimitedRequest(req) {
+			return res, nil
+		}
+		for i, c := range res.Content {
+			tc, ok := c.(mcp.TextContent)
+			if !ok || len(tc.Text) <= MaxResultLength {
+				continue
+			}
+			tc.Text = truncateWithAdvice(tc.Text, advice)
+			res.Content[i] = tc
+		}
+		return res, nil
+	}
+}
+
+// isUnlimitedRequest reports whether the caller passed "unlimited": "true"
+// in the tool arguments. The query tools advertise this as the escape hatch
+// to disable output truncation; it is harmless on tools that don't document
+// it.
+func isUnlimitedRequest(req mcp.CallToolRequest) bool {
+	args, ok := req.Params.Arguments.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	v, _ := args["unlimited"].(string)
+	return v == "true"
+}
+
 // Handler wrapper type for cleaner function signatures
 type PrometheusHandler func(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error)
 
@@ -163,6 +231,7 @@ func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.
 	tool := mcp.NewTool(toolName, append(baseOptions, allOptions...)...)
 
 	h := withDynamicPrometheusClient(handler, client, sc)
+	h = truncationMiddleware(toolName, h)
 	for _, mw := range middleware {
 		h = mw(toolName, h)
 	}
@@ -281,16 +350,15 @@ func truncateWithAdvice(text, advice string) string {
 	return truncated + advice
 }
 
-// formatQueryResult formats the query result with truncation and user guidance
+// formatQueryResult formats the query result. When unlimited is set, a
+// warning prefix is added; otherwise the raw formatted result is returned and
+// truncationMiddleware applies the size cap downstream.
 func formatQueryResult(resultType string, result interface{}, unlimited bool) string {
 	resultStr := fmt.Sprintf("Query executed successfully.\nResult Type: %s\nResult: %+v", resultType, result)
-
 	if unlimited {
-		warningMsg := "⚠️  WARNING: Unlimited output enabled - this response may be very large and could impact performance.\n\n"
-		return warningMsg + resultStr
+		return "⚠️  WARNING: Unlimited output enabled - this response may be very large and could impact performance.\n\n" + resultStr
 	}
-
-	return truncateWithAdvice(resultStr, TruncationAdvice)
+	return resultStr
 }
 
 // Helper function to extract parameters
@@ -608,7 +676,7 @@ func handleGetMetricMetadata(ctx context.Context, request mcp.CallToolRequest, c
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: truncateWithAdvice(fmt.Sprintf("Metadata for metric '%s':\n%+v", metric, metadata), discoveryAdvice),
+				Text: fmt.Sprintf("Metadata for metric '%s':\n%+v", metric, metadata),
 			},
 		},
 	}, nil
@@ -643,7 +711,7 @@ func handleGetTargets(ctx context.Context, request mcp.CallToolRequest, client *
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: truncateWithAdvice(result, bulkAdvice),
+				Text: result,
 			},
 		},
 	}, nil
@@ -695,7 +763,7 @@ func handleListLabelNames(ctx context.Context, request mcp.CallToolRequest, clie
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: truncateWithAdvice(responseText, discoveryAdvice),
+				Text: responseText,
 			},
 		},
 	}, nil
@@ -763,7 +831,7 @@ func handleListLabelValues(ctx context.Context, request mcp.CallToolRequest, cli
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: truncateWithAdvice(responseText, discoveryAdvice),
+				Text: responseText,
 			},
 		},
 	}, nil
@@ -830,7 +898,7 @@ func handleFindSeries(ctx context.Context, request mcp.CallToolRequest, client *
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: truncateWithAdvice(responseText, discoveryAdvice),
+				Text: responseText,
 			},
 		},
 	}, nil
@@ -858,7 +926,7 @@ func handleGetRules(ctx context.Context, request mcp.CallToolRequest, client *Cl
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: truncateWithAdvice(fmt.Sprintf("Prometheus Rules:\n%+v", rules), bulkAdvice),
+				Text: fmt.Sprintf("Prometheus Rules:\n%+v", rules),
 			},
 		},
 	}, nil
@@ -886,7 +954,7 @@ func handleGetAlerts(ctx context.Context, request mcp.CallToolRequest, client *C
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: truncateWithAdvice(fmt.Sprintf("Active Alerts:\n%+v", alerts), bulkAdvice),
+				Text: fmt.Sprintf("Active Alerts:\n%+v", alerts),
 			},
 		},
 	}, nil
@@ -942,7 +1010,7 @@ func handleGetConfig(ctx context.Context, request mcp.CallToolRequest, client *C
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: truncateWithAdvice(fmt.Sprintf("Prometheus Configuration:\n%+v", config), bulkAdvice),
+				Text: fmt.Sprintf("Prometheus Configuration:\n%+v", config),
 			},
 		},
 	}, nil
@@ -1059,7 +1127,7 @@ func handleGetTSDBStats(ctx context.Context, request mcp.CallToolRequest, client
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: truncateWithAdvice(fmt.Sprintf("TSDB Statistics:\n%+v", tsdbStats), bulkAdvice),
+				Text: fmt.Sprintf("TSDB Statistics:\n%+v", tsdbStats),
 			},
 		},
 	}, nil
@@ -1127,7 +1195,7 @@ func handleQueryExemplars(ctx context.Context, request mcp.CallToolRequest, clie
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: truncateWithAdvice(fmt.Sprintf("Exemplars for query '%s':\n%+v", query, exemplars), discoveryAdvice),
+				Text: fmt.Sprintf("Exemplars for query '%s':\n%+v", query, exemplars),
 			},
 		},
 	}, nil
@@ -1160,7 +1228,7 @@ func handleGetTargetsMetadata(ctx context.Context, request mcp.CallToolRequest, 
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: truncateWithAdvice(fmt.Sprintf("Targets Metadata:\n%+v", targetsMetadata), discoveryAdvice),
+				Text: fmt.Sprintf("Targets Metadata:\n%+v", targetsMetadata),
 			},
 		},
 	}, nil

@@ -596,7 +596,7 @@ func TestTruncateWithAdvice(t *testing.T) {
 
 func TestHandleListLabelNamesTruncation(t *testing.T) {
 	// Stub /api/v1/labels with enough names to push the formatted response
-	// past MaxResultLength so the byte cap fires.
+	// past MaxResultLength so the middleware cap fires.
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/labels" {
 			w.WriteHeader(http.StatusNotFound)
@@ -629,7 +629,12 @@ func TestHandleListLabelNamesTruncation(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	result, err := handleListLabelNames(ctx, mcp.CallToolRequest{}, client, sc)
+	// Exercise the production path: handler wrapped by truncationMiddleware.
+	h := truncationMiddleware("list_label_names", func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleListLabelNames(ctx, req, client, sc)
+	})
+
+	result, err := h(ctx, mcp.CallToolRequest{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -654,4 +659,93 @@ func TestHandleListLabelNamesTruncation(t *testing.T) {
 	if !strings.HasSuffix(tc.Text, discoveryAdvice) {
 		t.Errorf("expected discoveryAdvice suffix; tail=%q", tc.Text[max(0, len(tc.Text)-120):])
 	}
+}
+
+func TestTruncationMiddleware(t *testing.T) {
+	bigText := strings.Repeat("x", MaxResultLength+500)
+	smallText := "ok"
+
+	makeHandler := func(text string) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{mcp.TextContent{Type: "text", Text: text}},
+			}, nil
+		}
+	}
+
+	t.Run("truncates oversized output and appends the tool's advice", func(t *testing.T) {
+		h := truncationMiddleware("find_series", makeHandler(bigText))
+		res, err := h(context.Background(), mcp.CallToolRequest{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := res.Content[0].(mcp.TextContent).Text
+		if !strings.HasSuffix(got, discoveryAdvice) {
+			t.Errorf("expected discoveryAdvice suffix for find_series")
+		}
+		if len(got) > MaxResultLength+len(discoveryAdvice) {
+			t.Errorf("truncated text longer than expected: %d", len(got))
+		}
+	})
+
+	t.Run("unmapped tool falls back to bulkAdvice", func(t *testing.T) {
+		h := truncationMiddleware("not_a_real_tool", makeHandler(bigText))
+		res, _ := h(context.Background(), mcp.CallToolRequest{})
+		got := res.Content[0].(mcp.TextContent).Text
+		if !strings.HasSuffix(got, bulkAdvice) {
+			t.Errorf("expected bulkAdvice fallback for unmapped tool")
+		}
+	})
+
+	t.Run("short text passes through untouched", func(t *testing.T) {
+		h := truncationMiddleware("execute_query", makeHandler(smallText))
+		res, _ := h(context.Background(), mcp.CallToolRequest{})
+		got := res.Content[0].(mcp.TextContent).Text
+		if got != smallText {
+			t.Errorf("expected passthrough %q, got %q", smallText, got)
+		}
+	})
+
+	t.Run("unlimited=true bypasses truncation", func(t *testing.T) {
+		h := truncationMiddleware("execute_query", makeHandler(bigText))
+		req := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name:      "execute_query",
+				Arguments: map[string]interface{}{"unlimited": "true"},
+			},
+		}
+		res, _ := h(context.Background(), req)
+		got := res.Content[0].(mcp.TextContent).Text
+		if got != bigText {
+			t.Errorf("expected raw bigText with unlimited=true; len got=%d, want=%d", len(got), len(bigText))
+		}
+	})
+
+	t.Run("propagates handler errors without modification", func(t *testing.T) {
+		boom := fmt.Errorf("boom")
+		h := truncationMiddleware("execute_query", func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return nil, boom
+		})
+		_, err := h(context.Background(), mcp.CallToolRequest{})
+		if err != boom {
+			t.Errorf("expected boom propagated, got %v", err)
+		}
+	})
+
+	t.Run("preserves IsError flag on tool error results", func(t *testing.T) {
+		h := truncationMiddleware("execute_query", func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{mcp.TextContent{Type: "text", Text: bigText}},
+			}, nil
+		})
+		res, _ := h(context.Background(), mcp.CallToolRequest{})
+		if !res.IsError {
+			t.Error("expected IsError=true to be preserved")
+		}
+		got := res.Content[0].(mcp.TextContent).Text
+		if !strings.HasSuffix(got, TruncationAdvice) {
+			t.Error("expected truncation to still apply to error results")
+		}
+	})
 }
