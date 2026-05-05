@@ -555,3 +555,103 @@ func TestHandleCheckReadyConnectionError(t *testing.T) {
 		t.Error("expected IsError=true for connection failure")
 	}
 }
+
+func TestTruncateWithAdvice(t *testing.T) {
+	const advice = "ADV"
+
+	t.Run("under cap returns input verbatim", func(t *testing.T) {
+		in := "small payload"
+		if got := truncateWithAdvice(in, advice); got != in {
+			t.Errorf("expected passthrough, got %q", got)
+		}
+	})
+
+	t.Run("over cap with no nearby newline cuts at MaxResultLength", func(t *testing.T) {
+		in := strings.Repeat("a", MaxResultLength+50)
+		got := truncateWithAdvice(in, advice)
+		if want := MaxResultLength + len(advice); len(got) != want {
+			t.Errorf("expected total length %d, got %d", want, len(got))
+		}
+		if !strings.HasSuffix(got, advice) {
+			t.Errorf("expected advice suffix, got tail %q", got[len(got)-len(advice):])
+		}
+	})
+
+	t.Run("over cap with newline in trailing 1000 bytes cuts at newline", func(t *testing.T) {
+		// Place a newline 50 bytes before MaxResultLength, then more content.
+		head := strings.Repeat("a", MaxResultLength-50)
+		in := head + "\n" + strings.Repeat("b", 200)
+		got := truncateWithAdvice(in, advice)
+		if want := (MaxResultLength - 50) + len(advice); len(got) != want {
+			t.Errorf("expected total length %d (cut at newline), got %d", want, len(got))
+		}
+		if !strings.HasPrefix(got, head) {
+			t.Errorf("expected payload to start with head; got prefix %q", got[:20])
+		}
+		if !strings.HasSuffix(got, advice) {
+			t.Errorf("expected advice suffix, got tail %q", got[len(got)-len(advice):])
+		}
+	})
+}
+
+func TestHandleListLabelNamesTruncation(t *testing.T) {
+	// Stub /api/v1/labels with enough names to push the formatted response
+	// past MaxResultLength so the byte cap fires.
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/labels" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		names := make([]string, 6000)
+		for i := range names {
+			names[i] = fmt.Sprintf("label_%05d", i)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "success",
+			"data":   names,
+		})
+	}))
+	defer mockServer.Close()
+
+	ctx := context.Background()
+	sc, err := server.NewServerContext(ctx,
+		server.WithPrometheusConfig(server.PrometheusConfig{URL: mockServer.URL}),
+		server.WithSlogLogger(discardLogger()),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create server context: %v", err)
+	}
+	defer func() { _ = sc.Shutdown() }()
+
+	client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	result, err := handleListLabelNames(ctx, mcp.CallToolRequest{}, client, sc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got error: %v", result.Content)
+	}
+	if len(result.Content) == 0 {
+		t.Fatal("expected at least one content block")
+	}
+	tc, ok := result.Content[0].(mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected TextContent, got %T", result.Content[0])
+	}
+
+	// The formatted body itself must not exceed MaxResultLength; the appended
+	// advice is allowed to push the total slightly past it.
+	body := strings.TrimSuffix(tc.Text, discoveryAdvice)
+	if len(body) > MaxResultLength {
+		t.Errorf("formatted body exceeds cap: len=%d > MaxResultLength=%d", len(body), MaxResultLength)
+	}
+	// And the discovery advice must be appended.
+	if !strings.HasSuffix(tc.Text, discoveryAdvice) {
+		t.Errorf("expected discoveryAdvice suffix; tail=%q", tc.Text[max(0, len(tc.Text)-120):])
+	}
+}

@@ -28,6 +28,32 @@ const (
    • Filtering by specific metrics instead of using wildcards
 
 🔧 To get the full untruncated result, add "unlimited": "true" to your query parameters, but be aware this may impact performance.`
+
+	// discoveryAdvice is appended when label/series/metadata/exemplar tool
+	// output is truncated. These tools accept matchers, time windows and
+	// limits, so the advice nudges the caller toward narrower requests.
+	discoveryAdvice = `
+
+⚠️  RESULT TRUNCATED: The response exceeded 50k characters.
+
+💡 To get a smaller, more focused result, consider:
+   • Passing a tighter "matches" selector (e.g. {namespace="my-ns", job="my-job"})
+   • Narrowing the "start_time" / "end_time" window
+   • Setting an explicit "limit" parameter
+   • Querying a specific metric name instead of broad patterns`
+
+	// bulkAdvice is appended when output from tools that dump system-wide
+	// state (rules, targets, config, alerts, TSDB stats) is truncated. These
+	// tools have no filtering parameters, so the advice points at narrower
+	// alternatives.
+	bulkAdvice = `
+
+⚠️  RESULT TRUNCATED: The response exceeded 50k characters.
+
+💡 This tool returns a full, unfiltered server dump. To inspect a smaller slice, consider:
+   • Using "execute_query" with ALERTS{alertname="..."} for specific alerts
+   • Using "find_series" with label matchers to scope to a job, namespace, or pool
+   • Using "get_targets_metadata" with "match_target" / "metric" filters`
 )
 
 // Common parameter builders to reduce repetition
@@ -241,6 +267,20 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 	return nil
 }
 
+// truncateWithAdvice trims text to MaxResultLength and appends the given
+// advice when truncation occurs. It tries to end at the last newline within
+// the trailing 1000 bytes to avoid cutting mid-line.
+func truncateWithAdvice(text, advice string) string {
+	if len(text) <= MaxResultLength {
+		return text
+	}
+	truncated := text[:MaxResultLength]
+	if lastNewline := strings.LastIndex(truncated, "\n"); lastNewline > MaxResultLength-1000 {
+		truncated = truncated[:lastNewline]
+	}
+	return truncated + advice
+}
+
 // formatQueryResult formats the query result with truncation and user guidance
 func formatQueryResult(resultType string, result interface{}, unlimited bool) string {
 	resultStr := fmt.Sprintf("Query executed successfully.\nResult Type: %s\nResult: %+v", resultType, result)
@@ -250,16 +290,7 @@ func formatQueryResult(resultType string, result interface{}, unlimited bool) st
 		return warningMsg + resultStr
 	}
 
-	if len(resultStr) > MaxResultLength {
-		truncated := resultStr[:MaxResultLength]
-		// Try to end at a complete line to avoid cutting off mid-metric
-		if lastNewline := strings.LastIndex(truncated, "\n"); lastNewline > MaxResultLength-1000 {
-			truncated = truncated[:lastNewline]
-		}
-		return truncated + TruncationAdvice
-	}
-
-	return resultStr
+	return truncateWithAdvice(resultStr, TruncationAdvice)
 }
 
 // Helper function to extract parameters
@@ -577,7 +608,7 @@ func handleGetMetricMetadata(ctx context.Context, request mcp.CallToolRequest, c
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Metadata for metric '%s':\n%+v", metric, metadata),
+				Text: truncateWithAdvice(fmt.Sprintf("Metadata for metric '%s':\n%+v", metric, metadata), discoveryAdvice),
 			},
 		},
 	}, nil
@@ -612,7 +643,7 @@ func handleGetTargets(ctx context.Context, request mcp.CallToolRequest, client *
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: result,
+				Text: truncateWithAdvice(result, bulkAdvice),
 			},
 		},
 	}, nil
@@ -664,7 +695,7 @@ func handleListLabelNames(ctx context.Context, request mcp.CallToolRequest, clie
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: responseText,
+				Text: truncateWithAdvice(responseText, discoveryAdvice),
 			},
 		},
 	}, nil
@@ -732,7 +763,7 @@ func handleListLabelValues(ctx context.Context, request mcp.CallToolRequest, cli
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: responseText,
+				Text: truncateWithAdvice(responseText, discoveryAdvice),
 			},
 		},
 	}, nil
@@ -799,7 +830,7 @@ func handleFindSeries(ctx context.Context, request mcp.CallToolRequest, client *
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: responseText,
+				Text: truncateWithAdvice(responseText, discoveryAdvice),
 			},
 		},
 	}, nil
@@ -827,7 +858,7 @@ func handleGetRules(ctx context.Context, request mcp.CallToolRequest, client *Cl
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Prometheus Rules:\n%+v", rules),
+				Text: truncateWithAdvice(fmt.Sprintf("Prometheus Rules:\n%+v", rules), bulkAdvice),
 			},
 		},
 	}, nil
@@ -855,7 +886,7 @@ func handleGetAlerts(ctx context.Context, request mcp.CallToolRequest, client *C
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Active Alerts:\n%+v", alerts),
+				Text: truncateWithAdvice(fmt.Sprintf("Active Alerts:\n%+v", alerts), bulkAdvice),
 			},
 		},
 	}, nil
@@ -911,7 +942,7 @@ func handleGetConfig(ctx context.Context, request mcp.CallToolRequest, client *C
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Prometheus Configuration:\n%+v", config),
+				Text: truncateWithAdvice(fmt.Sprintf("Prometheus Configuration:\n%+v", config), bulkAdvice),
 			},
 		},
 	}, nil
@@ -1028,7 +1059,7 @@ func handleGetTSDBStats(ctx context.Context, request mcp.CallToolRequest, client
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("TSDB Statistics:\n%+v", tsdbStats),
+				Text: truncateWithAdvice(fmt.Sprintf("TSDB Statistics:\n%+v", tsdbStats), bulkAdvice),
 			},
 		},
 	}, nil
@@ -1096,7 +1127,7 @@ func handleQueryExemplars(ctx context.Context, request mcp.CallToolRequest, clie
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Exemplars for query '%s':\n%+v", query, exemplars),
+				Text: truncateWithAdvice(fmt.Sprintf("Exemplars for query '%s':\n%+v", query, exemplars), discoveryAdvice),
 			},
 		},
 	}, nil
@@ -1129,7 +1160,7 @@ func handleGetTargetsMetadata(ctx context.Context, request mcp.CallToolRequest, 
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Targets Metadata:\n%+v", targetsMetadata),
+				Text: truncateWithAdvice(fmt.Sprintf("Targets Metadata:\n%+v", targetsMetadata), discoveryAdvice),
 			},
 		},
 	}, nil
