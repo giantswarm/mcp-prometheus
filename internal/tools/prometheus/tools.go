@@ -487,8 +487,7 @@ func handleExecuteQuery(ctx context.Context, request mcp.CallToolRequest, client
 	}
 
 	timeParam, _ := params["time"].(string)
-	unlimitedStr, _ := params["unlimited"].(string)
-	unlimited := unlimitedStr == "true"
+	unlimited := isUnlimitedRequest(request)
 
 	// Extract new optional parameters
 	options := QueryOptions{
@@ -589,8 +588,7 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 			},
 		}, nil
 	}
-	unlimitedStr, _ := params["unlimited"].(string)
-	unlimited := unlimitedStr == "true"
+	unlimited := isUnlimitedRequest(request)
 
 	// Extract new optional parameters
 	options := QueryOptions{
