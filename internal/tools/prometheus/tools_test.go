@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -45,9 +46,9 @@ func TestRegisterPrometheusTools(t *testing.T) {
 func TestRegisterPrometheusToolsWithMiddleware(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == apiQueryPath {
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"status": "success",
-				"data":   map[string]interface{}{"resultType": "vector", "result": []interface{}{}},
+				"data":   map[string]any{"resultType": "vector", "result": []any{}},
 			})
 		} else {
 			w.WriteHeader(http.StatusNotFound)
@@ -200,11 +201,11 @@ func TestHandleExecuteQuery(t *testing.T) {
 	// Create mock server
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == apiQueryPath {
-			response := map[string]interface{}{
+			response := map[string]any{
 				"status": "success",
-				"data": map[string]interface{}{
+				"data": map[string]any{
 					"resultType": "vector",
-					"result":     []interface{}{},
+					"result":     []any{},
 				},
 			}
 			_ = json.NewEncoder(w).Encode(response)
@@ -236,7 +237,7 @@ func TestHandleExecuteQuery(t *testing.T) {
 	request := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "execute_query",
-			Arguments: map[string]interface{}{
+			Arguments: map[string]any{
 				"query": "up",
 			},
 		},
@@ -255,7 +256,7 @@ func TestHandleExecuteQuery(t *testing.T) {
 	requestBad := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name:      "execute_query",
-			Arguments: map[string]interface{}{},
+			Arguments: map[string]any{},
 		},
 	}
 
@@ -273,11 +274,11 @@ func TestHandleExecuteRangeQuery(t *testing.T) {
 	// Create mock server
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/query_range" {
-			response := map[string]interface{}{
+			response := map[string]any{
 				"status": "success",
-				"data": map[string]interface{}{
+				"data": map[string]any{
 					"resultType": "matrix",
-					"result":     []interface{}{},
+					"result":     []any{},
 				},
 			}
 			_ = json.NewEncoder(w).Encode(response)
@@ -309,7 +310,7 @@ func TestHandleExecuteRangeQuery(t *testing.T) {
 	request := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "execute_range_query",
-			Arguments: map[string]interface{}{
+			Arguments: map[string]any{
 				"query": "up",
 				"start": "2023-01-01T00:00:00Z",
 				"end":   "2023-01-01T01:00:00Z",
@@ -332,11 +333,11 @@ func TestHandleGetMetricMetadata(t *testing.T) {
 	// Create mock server
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/metadata" {
-			response := map[string]interface{}{
+			response := map[string]any{
 				"status": "success",
-				"data": map[string]interface{}{
-					"http_requests_total": []interface{}{
-						map[string]interface{}{
+				"data": map[string]any{
+					"http_requests_total": []any{
+						map[string]any{
 							"type": "counter",
 							"help": "Total HTTP requests",
 							"unit": "",
@@ -373,7 +374,7 @@ func TestHandleGetMetricMetadata(t *testing.T) {
 	request := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "get_metric_metadata",
-			Arguments: map[string]interface{}{
+			Arguments: map[string]any{
 				"metric": "http_requests_total",
 			},
 		},
@@ -607,7 +608,7 @@ func TestHandleListLabelNamesTruncation(t *testing.T) {
 			names[i] = fmt.Sprintf("label_%05d", i)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"status": "success",
 			"data":   names,
 		})
@@ -630,7 +631,7 @@ func TestHandleListLabelNamesTruncation(t *testing.T) {
 	}
 
 	// Exercise the production path: handler wrapped by truncationMiddleware.
-	h := truncationMiddleware("list_label_names", func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	h := truncationMiddleware("list_label_names", discoveryAdvice, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return handleListLabelNames(ctx, req, client, sc)
 	})
 
@@ -673,57 +674,142 @@ func TestTruncationMiddleware(t *testing.T) {
 		}
 	}
 
-	t.Run("truncates oversized output and appends the tool's advice", func(t *testing.T) {
-		h := truncationMiddleware("find_series", makeHandler(bigText))
+	tests := []struct {
+		name       string
+		toolName   string
+		advice     string
+		text       string
+		unlimited  bool
+		wantSuffix string // empty: expect text returned verbatim
+	}{
+		{
+			name:       "discovery tool truncates with discoveryAdvice",
+			toolName:   "find_series",
+			advice:     discoveryAdvice,
+			text:       bigText,
+			wantSuffix: discoveryAdvice,
+		},
+		{
+			name:       "bulk tool truncates with bulkAdvice",
+			toolName:   "get_rules",
+			advice:     bulkAdvice,
+			text:       bigText,
+			wantSuffix: bulkAdvice,
+		},
+		{
+			name:       "alerts tool truncates with alertsAdvice",
+			toolName:   "get_alerts",
+			advice:     alertsAdvice,
+			text:       bigText,
+			wantSuffix: alertsAdvice,
+		},
+		{
+			name:       "query tool truncates with TruncationAdvice",
+			toolName:   "execute_query",
+			advice:     TruncationAdvice,
+			text:       bigText,
+			wantSuffix: TruncationAdvice,
+		},
+		{
+			name:       "short text passes through untouched",
+			toolName:   "execute_query",
+			advice:     TruncationAdvice,
+			text:       smallText,
+			wantSuffix: "",
+		},
+		{
+			name:       "unlimited=true bypasses on query tool",
+			toolName:   "execute_query",
+			advice:     TruncationAdvice,
+			text:       bigText,
+			unlimited:  true,
+			wantSuffix: "",
+		},
+		{
+			name:       "unlimited=true bypasses on range query tool",
+			toolName:   "execute_range_query",
+			advice:     TruncationAdvice,
+			text:       bigText,
+			unlimited:  true,
+			wantSuffix: "",
+		},
+		{
+			name:       "unlimited=true is ignored on bulk tool",
+			toolName:   "get_rules",
+			advice:     bulkAdvice,
+			text:       bigText,
+			unlimited:  true,
+			wantSuffix: bulkAdvice,
+		},
+		{
+			name:       "unlimited=true is ignored on discovery tool",
+			toolName:   "find_series",
+			advice:     discoveryAdvice,
+			text:       bigText,
+			unlimited:  true,
+			wantSuffix: discoveryAdvice,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := truncationMiddleware(tt.toolName, tt.advice, makeHandler(tt.text))
+			req := mcp.CallToolRequest{Params: mcp.CallToolParams{Name: tt.toolName}}
+			if tt.unlimited {
+				req.Params.Arguments = map[string]any{"unlimited": "true"}
+			}
+			res, err := h(context.Background(), req)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			got := res.Content[0].(mcp.TextContent).Text
+
+			if tt.wantSuffix == "" {
+				if got != tt.text {
+					t.Errorf("expected passthrough; len got=%d want=%d", len(got), len(tt.text))
+				}
+				return
+			}
+			if !strings.HasSuffix(got, tt.wantSuffix) {
+				t.Errorf("expected suffix %q; tail=%q", strings.TrimSpace(tt.wantSuffix)[:20], got[max(0, len(got)-120):])
+			}
+			if len(got) > MaxResultLength+len(tt.wantSuffix) {
+				t.Errorf("truncated text longer than cap+advice: %d", len(got))
+			}
+		})
+	}
+
+	t.Run("truncates every oversized TextContent in a multi-block result", func(t *testing.T) {
+		h := truncationMiddleware("find_series", discoveryAdvice, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{
+					mcp.TextContent{Type: "text", Text: bigText},
+					mcp.TextContent{Type: "text", Text: smallText},
+					mcp.TextContent{Type: "text", Text: bigText},
+				},
+			}, nil
+		})
 		res, err := h(context.Background(), mcp.CallToolRequest{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		got := res.Content[0].(mcp.TextContent).Text
-		if !strings.HasSuffix(got, discoveryAdvice) {
-			t.Errorf("expected discoveryAdvice suffix for find_series")
+		first := res.Content[0].(mcp.TextContent).Text
+		middle := res.Content[1].(mcp.TextContent).Text
+		last := res.Content[2].(mcp.TextContent).Text
+		if !strings.HasSuffix(first, discoveryAdvice) {
+			t.Error("expected first block to be truncated")
 		}
-		if len(got) > MaxResultLength+len(discoveryAdvice) {
-			t.Errorf("truncated text longer than expected: %d", len(got))
+		if middle != smallText {
+			t.Errorf("expected middle block untouched, got %q", middle)
 		}
-	})
-
-	t.Run("unmapped tool falls back to bulkAdvice", func(t *testing.T) {
-		h := truncationMiddleware("not_a_real_tool", makeHandler(bigText))
-		res, _ := h(context.Background(), mcp.CallToolRequest{})
-		got := res.Content[0].(mcp.TextContent).Text
-		if !strings.HasSuffix(got, bulkAdvice) {
-			t.Errorf("expected bulkAdvice fallback for unmapped tool")
-		}
-	})
-
-	t.Run("short text passes through untouched", func(t *testing.T) {
-		h := truncationMiddleware("execute_query", makeHandler(smallText))
-		res, _ := h(context.Background(), mcp.CallToolRequest{})
-		got := res.Content[0].(mcp.TextContent).Text
-		if got != smallText {
-			t.Errorf("expected passthrough %q, got %q", smallText, got)
-		}
-	})
-
-	t.Run("unlimited=true bypasses truncation", func(t *testing.T) {
-		h := truncationMiddleware("execute_query", makeHandler(bigText))
-		req := mcp.CallToolRequest{
-			Params: mcp.CallToolParams{
-				Name:      "execute_query",
-				Arguments: map[string]interface{}{"unlimited": "true"},
-			},
-		}
-		res, _ := h(context.Background(), req)
-		got := res.Content[0].(mcp.TextContent).Text
-		if got != bigText {
-			t.Errorf("expected raw bigText with unlimited=true; len got=%d, want=%d", len(got), len(bigText))
+		if !strings.HasSuffix(last, discoveryAdvice) {
+			t.Error("expected last block to be truncated")
 		}
 	})
 
 	t.Run("propagates handler errors without modification", func(t *testing.T) {
 		boom := fmt.Errorf("boom")
-		h := truncationMiddleware("execute_query", func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h := truncationMiddleware("execute_query", TruncationAdvice, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return nil, boom
 		})
 		_, err := h(context.Background(), mcp.CallToolRequest{})
@@ -733,7 +819,7 @@ func TestTruncationMiddleware(t *testing.T) {
 	})
 
 	t.Run("preserves IsError flag on tool error results", func(t *testing.T) {
-		h := truncationMiddleware("execute_query", func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h := truncationMiddleware("execute_query", TruncationAdvice, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{mcp.TextContent{Type: "text", Text: bigText}},
@@ -746,6 +832,31 @@ func TestTruncationMiddleware(t *testing.T) {
 		got := res.Content[0].(mcp.TextContent).Text
 		if !strings.HasSuffix(got, TruncationAdvice) {
 			t.Error("expected truncation to still apply to error results")
+		}
+	})
+}
+
+// TestTruncateWithAdviceUTF8 verifies that truncation never lands mid-rune,
+// so the resulting string remains valid UTF-8 even when the byte cap falls
+// inside a multi-byte character.
+func TestTruncateWithAdviceUTF8(t *testing.T) {
+	const advice = "ADV"
+
+	t.Run("backs off mid-rune cut to a valid boundary", func(t *testing.T) {
+		// Build a payload where MaxResultLength sits inside a 4-byte rune
+		// (U+1F4A1 LIGHT BULB = 0xF0 0x9F 0x92 0xA1). No newlines, so the
+		// newline-anchor branch doesn't apply.
+		const bulb = "\U0001F4A1"
+		// Pad so a bulb crosses the MaxResultLength boundary.
+		padLen := MaxResultLength - 2
+		in := strings.Repeat("a", padLen) + bulb + strings.Repeat("b", 100)
+		got := truncateWithAdvice(in, advice)
+		body := strings.TrimSuffix(got, advice)
+		if !utf8.ValidString(body) {
+			t.Errorf("truncated body is not valid UTF-8: %q", body[len(body)-8:])
+		}
+		if !strings.HasSuffix(got, advice) {
+			t.Error("expected advice suffix")
 		}
 	})
 }
