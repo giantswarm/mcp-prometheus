@@ -138,21 +138,25 @@ type ToolMiddleware func(
 	next func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error),
 ) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
 
-// unlimitedAllowed is the closed set of tool names where the caller may pass
-// "unlimited": "true" to bypass truncation. Limiting this prevents callers
-// who learned the trick from execute_query's description from silently
-// disabling the cap on bulk-dump tools that have no other safety valve.
-var unlimitedAllowed = map[string]bool{
-	"execute_query":       true,
-	"execute_range_query": true,
+// allowsUnlimited reports whether the named tool honours the
+// "unlimited": "true" request argument. The set is closed and static —
+// limiting it prevents callers who learned the trick from execute_query's
+// description from silently disabling the cap on bulk-dump tools that have
+// no other safety valve.
+func allowsUnlimited(name string) bool {
+	switch name {
+	case "execute_query", "execute_range_query":
+		return true
+	}
+	return false
 }
 
 // truncationMiddleware caps oversized TextContent in tool results at
 // MaxResultLength and appends the given advice. It is wired by
 // registerPrometheusTools for every tool whose advice argument is non-empty.
 //
-// Honours the "unlimited": "true" request argument only on the tools listed
-// in unlimitedAllowed; other tools cannot opt out of truncation.
+// Honours the "unlimited": "true" request argument only on the tools that
+// allowsUnlimited returns true for; other tools cannot opt out of truncation.
 func truncationMiddleware(
 	name, advice string,
 	next func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error),
@@ -162,7 +166,7 @@ func truncationMiddleware(
 		if err != nil || res == nil {
 			return res, err
 		}
-		if unlimitedAllowed[name] && isUnlimitedRequest(req) {
+		if allowsUnlimited(name) && isUnlimitedRequest(req) {
 			return res, nil
 		}
 		// res.Content is freshly allocated by every handler in this package, so
@@ -182,7 +186,7 @@ func truncationMiddleware(
 
 // isUnlimitedRequest reports whether the caller passed "unlimited": "true"
 // in the tool arguments. Whether the bypass is honoured depends on the tool;
-// see unlimitedAllowed.
+// see allowsUnlimited.
 func isUnlimitedRequest(req mcp.CallToolRequest) bool {
 	args, ok := req.Params.Arguments.(map[string]any)
 	if !ok {
