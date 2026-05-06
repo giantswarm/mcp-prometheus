@@ -230,6 +230,7 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 	// Create MCP server
 	mcpSrv := mcpserver.NewMCPServer("mcp-prometheus", rootCmd.Version,
 		mcpserver.WithToolCapabilities(true),
+		mcpserver.WithInputSchemaValidation(),
 	)
 
 	// Register Prometheus tools with observability instrumentation
