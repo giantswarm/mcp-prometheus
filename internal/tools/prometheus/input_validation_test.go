@@ -54,6 +54,27 @@ func TestInputSchemaValidation_RejectsUnknownProperty(t *testing.T) {
 	}
 }
 
+// TestInputSchemaValidation_AllToolsRejectAdditional locks in the invariant
+// that every registered tool's input schema has additionalProperties: false.
+// Without this, a future tool author who registers a tool outside the shared
+// registerPrometheusTools helper would silently lose strict validation.
+func TestInputSchemaValidation_AllToolsRejectAdditional(t *testing.T) {
+	srv, _, cleanup := newValidatingServer(t)
+	defer cleanup()
+
+	tools := srv.ListTools()
+	if len(tools) == 0 {
+		t.Fatal("expected registered tools, got none")
+	}
+	for name, st := range tools {
+		ap := st.Tool.InputSchema.AdditionalProperties
+		b, ok := ap.(bool)
+		if !ok || b {
+			t.Errorf("tool %q: additionalProperties must be false, got %#v", name, ap)
+		}
+	}
+}
+
 // TestInputSchemaValidation_AcceptsKnownProperty makes sure a well-formed call
 // passes validation and reaches the handler, so the rejection test above is
 // meaningful (i.e. it isn't a side effect of an unrelated server-level reject).
