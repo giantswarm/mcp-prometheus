@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	mcpoauth "github.com/giantswarm/mcp-oauth"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -28,6 +29,50 @@ const (
    • Filtering by specific metrics instead of using wildcards
 
 🔧 To get the full untruncated result, add "unlimited": "true" to your query parameters, but be aware this may impact performance.`
+
+	// discoveryAdvice is appended when label/series/metadata/exemplar tool
+	// output is truncated. These tools accept matchers, time windows and
+	// limits, so the advice nudges the caller toward narrower requests.
+	discoveryAdvice = `
+
+⚠️  RESULT TRUNCATED: The response exceeded 50k characters.
+
+💡 To get a smaller, more focused result, consider:
+   • Passing a tighter "matches" selector (e.g. {namespace="my-ns", job="my-job"})
+   • Narrowing the "start_time" / "end_time" window
+   • Setting an explicit "limit" parameter
+   • Querying a specific metric name instead of broad patterns`
+
+	// alertsAdvice is appended when get_alerts output is truncated. The
+	// ALERTS series is queryable via PromQL, so the advice points the caller
+	// at execute_query with a narrower selector.
+	alertsAdvice = `
+
+⚠️  RESULT TRUNCATED: The response exceeded 50k characters.
+
+💡 To narrow the result, query the ALERTS series directly via "execute_query":
+   • execute_query with ALERTS{alertname="..."} to inspect a specific alert
+   • execute_query with ALERTS{severity="critical"} to filter by label
+   • Combine with topk() / count() to summarise rather than enumerate`
+
+	// bulkAdvice is appended when tools that return server-wide state are
+	// truncated and there is no narrower API on the Prometheus/Mimir side
+	// (get_rules, get_targets, get_config, get_tsdb_stats). The honest answer
+	// is "fetch less or filter on the client side."
+	bulkAdvice = `
+
+⚠️  RESULT TRUNCATED: The response exceeded 50k characters.
+
+💡 This tool returns the full server-side state and has no narrower API. Options:
+   • If the tool exposes a "limit" parameter, pass one
+   • Re-run against a more focused tenant/org scope
+   • Fetch less often and filter or paginate on the client side`
+
+	// noTruncation, when passed as the advice argument to
+	// registerPrometheusTools, disables the truncation middleware for that
+	// tool. Use it for tools whose output is bounded in practice
+	// (get_build_info, get_flags, …).
+	noTruncation = ""
 )
 
 // Common parameter builders to reduce repetition
@@ -93,6 +138,64 @@ type ToolMiddleware func(
 	next func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error),
 ) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
 
+// allowsUnlimited reports whether the named tool honours the
+// "unlimited": "true" request argument. The set is closed and static —
+// limiting it prevents callers who learned the trick from execute_query's
+// description from silently disabling the cap on bulk-dump tools that have
+// no other safety valve.
+func allowsUnlimited(name string) bool {
+	switch name {
+	case "execute_query", "execute_range_query":
+		return true
+	}
+	return false
+}
+
+// truncationMiddleware caps oversized TextContent in tool results at
+// MaxResultLength and appends the given advice. It is wired by
+// registerPrometheusTools for every tool whose advice argument is non-empty.
+//
+// Honours the "unlimited": "true" request argument only on the tools that
+// allowsUnlimited returns true for; other tools cannot opt out of truncation.
+func truncationMiddleware(
+	name, advice string,
+	next func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error),
+) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		res, err := next(ctx, req)
+		if err != nil || res == nil {
+			return res, err
+		}
+		if allowsUnlimited(name) && isUnlimitedRequest(req) {
+			return res, nil
+		}
+		// res.Content is freshly allocated by every handler in this package, so
+		// in-place mutation is safe. If a future handler ever returns a shared
+		// slice, clone here before writing.
+		for i, c := range res.Content {
+			tc, ok := c.(mcp.TextContent)
+			if !ok || len(tc.Text) <= MaxResultLength {
+				continue
+			}
+			tc.Text = truncateWithAdvice(tc.Text, advice)
+			res.Content[i] = tc
+		}
+		return res, nil
+	}
+}
+
+// isUnlimitedRequest reports whether the caller passed "unlimited": "true"
+// in the tool arguments. Whether the bypass is honoured depends on the tool;
+// see allowsUnlimited.
+func isUnlimitedRequest(req mcp.CallToolRequest) bool {
+	args, ok := req.Params.Arguments.(map[string]any)
+	if !ok {
+		return false
+	}
+	v, _ := args["unlimited"].(string)
+	return v == "true"
+}
+
 // Handler wrapper type for cleaner function signatures
 type PrometheusHandler func(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error)
 
@@ -127,7 +230,7 @@ func withDynamicPrometheusClient(handler PrometheusHandler, client *Client, sc *
 // than the open web, so readOnlyHint is always true and openWorldHint is always
 // false. destructiveHint and idempotentHint are omitted because they are only
 // meaningful when readOnlyHint is false.
-func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.ServerContext, middleware []ToolMiddleware, toolName string, description string, handler PrometheusHandler, options ...mcp.ToolOption) {
+func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.ServerContext, middleware []ToolMiddleware, toolName string, description string, advice string, handler PrometheusHandler, options ...mcp.ToolOption) {
 	allOptions := withPrometheusConnectionParams(options...)
 	baseOptions := []mcp.ToolOption{
 		mcp.WithDescription(description),
@@ -137,6 +240,11 @@ func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.
 	tool := mcp.NewTool(toolName, append(baseOptions, allOptions...)...)
 
 	h := withDynamicPrometheusClient(handler, client, sc)
+	if advice != noTruncation {
+		h = truncationMiddleware(toolName, advice, h)
+	}
+	// User-supplied middlewares wrap the (possibly already truncated) result,
+	// so any telemetry middleware sees post-truncation byte counts.
 	for _, mw := range middleware {
 		h = mw(toolName, h)
 	}
@@ -159,13 +267,13 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 
 	// Query execution tools
 	registerPrometheusTools(s, client, sc, middleware, "execute_query", "Execute a PromQL instant query against Prometheus",
-		handleExecuteQuery, withQueryEnhancementParams(
+		TruncationAdvice, handleExecuteQuery, withQueryEnhancementParams(
 			mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string")),
 			mcp.WithString("time", mcp.Description("Optional RFC3339 or Unix timestamp (default: current time)")),
 		)...)
 
 	registerPrometheusTools(s, client, sc, middleware, "execute_range_query", "Execute a PromQL range query with start time, end time, and step interval",
-		handleExecuteRangeQuery, withQueryEnhancementParams(
+		TruncationAdvice, handleExecuteRangeQuery, withQueryEnhancementParams(
 			mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string")),
 			mcp.WithString("start", mcp.Required(), mcp.Description("Start time as RFC3339 or Unix timestamp")),
 			mcp.WithString("end", mcp.Required(), mcp.Description("End time as RFC3339 or Unix timestamp")),
@@ -174,99 +282,112 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 
 	// Metrics discovery tools
 	registerPrometheusTools(s, client, sc, middleware, "get_metric_metadata", "Get metadata for a specific metric",
-		handleGetMetricMetadata,
+		discoveryAdvice, handleGetMetricMetadata,
 		mcp.WithString("metric", mcp.Required(), mcp.Description("The name of the metric to retrieve metadata for")),
 		mcp.WithString("limit", mcp.Description("Maximum number of metadata entries to return")),
 	)
 
 	// Label and series discovery tools
 	registerPrometheusTools(s, client, sc, middleware, "list_label_names", "Get all available label names",
-		handleListLabelNames, withTimeFilteringParams(withLabelMatchingParams(
+		discoveryAdvice, handleListLabelNames, withTimeFilteringParams(withLabelMatchingParams(
 			mcp.WithString("limit", mcp.Description("Maximum number of label names to return")),
 		)...)...)
 
 	registerPrometheusTools(s, client, sc, middleware, "list_label_values", "Get values for a specific label",
-		handleListLabelValues, withTimeFilteringParams(withLabelMatchingParams(
+		discoveryAdvice, handleListLabelValues, withTimeFilteringParams(withLabelMatchingParams(
 			mcp.WithString("label", mcp.Required(), mcp.Description("The label name to get values for")),
 			mcp.WithString("limit", mcp.Description("Maximum number of label values to return")),
 		)...)...)
 
 	registerPrometheusTools(s, client, sc, middleware, "find_series", "Find series by label matchers",
-		handleFindSeries, withTimeFilteringParams(
+		discoveryAdvice, handleFindSeries, withTimeFilteringParams(
 			mcp.WithArray("matches", mcp.Required(), mcp.Description("Array of label matchers (e.g., ['{job=\"prometheus\"}', '{__name__=~\"http_.*\"}'])")),
 			mcp.WithString("limit", mcp.Description("Maximum number of series to return")),
 		)...)
 
 	// Target and system information tools
-	registerPrometheusTools(s, client, sc, middleware, "get_targets", "Get information about all scrape targets", handleGetTargets)
+	registerPrometheusTools(s, client, sc, middleware, "get_targets", "Get information about all scrape targets", bulkAdvice, handleGetTargets)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_build_info", "Get build information about the Prometheus server", handleGetBuildInfo)
+	registerPrometheusTools(s, client, sc, middleware, "get_build_info", "Get build information about the Prometheus server", noTruncation, handleGetBuildInfo)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_runtime_info", "Get runtime information about the Prometheus server", handleGetRuntimeInfo)
+	registerPrometheusTools(s, client, sc, middleware, "get_runtime_info", "Get runtime information about the Prometheus server", noTruncation, handleGetRuntimeInfo)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_flags", "Get runtime flags that Prometheus was launched with", handleGetFlags)
+	registerPrometheusTools(s, client, sc, middleware, "get_flags", "Get runtime flags that Prometheus was launched with", noTruncation, handleGetFlags)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_config", "Get Prometheus configuration", handleGetConfig)
+	registerPrometheusTools(s, client, sc, middleware, "get_config", "Get Prometheus configuration", bulkAdvice, handleGetConfig)
 
 	// Alerting tools
-	registerPrometheusTools(s, client, sc, middleware, "get_alerts", "Get active alerts", handleGetAlerts)
+	registerPrometheusTools(s, client, sc, middleware, "get_alerts", "Get active alerts", alertsAdvice, handleGetAlerts)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_alertmanagers", "Get AlertManager discovery information", handleGetAlertManagers)
+	registerPrometheusTools(s, client, sc, middleware, "get_alertmanagers", "Get AlertManager discovery information", noTruncation, handleGetAlertManagers)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_rules", "Get recording and alerting rules", handleGetRules)
+	registerPrometheusTools(s, client, sc, middleware, "get_rules", "Get recording and alerting rules", bulkAdvice, handleGetRules)
 
 	// Advanced tools
 	registerPrometheusTools(s, client, sc, middleware, "get_tsdb_stats", "Get TSDB cardinality statistics",
-		handleGetTSDBStats,
+		bulkAdvice, handleGetTSDBStats,
 		mcp.WithString("limit", mcp.Description("Maximum number of stats entries to return")),
 	)
 
 	registerPrometheusTools(s, client, sc, middleware, "query_exemplars", "Query exemplars for traces",
-		handleQueryExemplars,
+		discoveryAdvice, handleQueryExemplars,
 		mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string to find exemplars for")),
 		mcp.WithString("start", mcp.Required(), mcp.Description("Start time as RFC3339 or Unix timestamp")),
 		mcp.WithString("end", mcp.Required(), mcp.Description("End time as RFC3339 or Unix timestamp")),
 	)
 
 	registerPrometheusTools(s, client, sc, middleware, "get_targets_metadata", "Get metadata about metrics from specific targets",
-		handleGetTargetsMetadata,
+		discoveryAdvice, handleGetTargetsMetadata,
 		mcp.WithString("match_target", mcp.Description("Target matcher to filter targets")),
 		mcp.WithString("metric", mcp.Description("Metric name to filter metadata for")),
 		mcp.WithString("limit", mcp.Description("Maximum number of metadata entries to return")),
 	)
 
 	// Status / health tools
-	registerPrometheusTools(s, client, sc, middleware, "check_ready", "Check whether the Prometheus/Mimir server is ready to serve traffic (GET /-/ready)", handleCheckReady)
+	registerPrometheusTools(s, client, sc, middleware, "check_ready", "Check whether the Prometheus/Mimir server is ready to serve traffic (GET /-/ready)", noTruncation, handleCheckReady)
 
 	return nil
 }
 
-// formatQueryResult formats the query result with truncation and user guidance
-func formatQueryResult(resultType string, result interface{}, unlimited bool) string {
-	resultStr := fmt.Sprintf("Query executed successfully.\nResult Type: %s\nResult: %+v", resultType, result)
-
-	if unlimited {
-		warningMsg := "⚠️  WARNING: Unlimited output enabled - this response may be very large and could impact performance.\n\n"
-		return warningMsg + resultStr
+// truncateWithAdvice trims text to MaxResultLength and appends the given
+// advice when truncation occurs. It tries to end at the last newline within
+// the trailing 1000 bytes to avoid cutting mid-line, and backs off any
+// half-rune at the cut so the result remains valid UTF-8 (the advice strings
+// start with multi-byte characters, so a half-rune tail would corrupt the
+// JSON encoding downstream).
+func truncateWithAdvice(text, advice string) string {
+	if len(text) <= MaxResultLength {
+		return text
 	}
-
-	if len(resultStr) > MaxResultLength {
-		truncated := resultStr[:MaxResultLength]
-		// Try to end at a complete line to avoid cutting off mid-metric
-		if lastNewline := strings.LastIndex(truncated, "\n"); lastNewline > MaxResultLength-1000 {
-			truncated = truncated[:lastNewline]
+	truncated := text[:MaxResultLength]
+	if lastNewline := strings.LastIndex(truncated, "\n"); lastNewline > MaxResultLength-1000 {
+		truncated = truncated[:lastNewline]
+	} else {
+		// No usable newline anchor — the byte cut may sit mid-rune. UTF-8
+		// runes are at most 4 bytes, so up to 3 backoff steps suffice.
+		for i := 0; i < utf8.UTFMax-1 && len(truncated) > 0 && !utf8.ValidString(truncated); i++ {
+			truncated = truncated[:len(truncated)-1]
 		}
-		return truncated + TruncationAdvice
 	}
+	return truncated + advice
+}
 
+// formatQueryResult formats the query result. When unlimited is set, a
+// warning prefix is added; otherwise the raw formatted result is returned and
+// truncationMiddleware applies the size cap downstream.
+func formatQueryResult(resultType string, result any, unlimited bool) string {
+	resultStr := fmt.Sprintf("Query executed successfully.\nResult Type: %s\nResult: %+v", resultType, result)
+	if unlimited {
+		return "⚠️  WARNING: Unlimited output enabled - this response may be very large and could impact performance.\n\n" + resultStr
+	}
 	return resultStr
 }
 
 // Helper function to extract parameters
-func extractParams(request mcp.CallToolRequest) map[string]interface{} {
-	params := make(map[string]interface{})
+func extractParams(request mcp.CallToolRequest) map[string]any {
+	params := make(map[string]any)
 	if request.Params.Arguments != nil {
-		if argsMap, ok := request.Params.Arguments.(map[string]interface{}); ok {
+		if argsMap, ok := request.Params.Arguments.(map[string]any); ok {
 			params = argsMap
 		}
 	}
@@ -274,9 +395,9 @@ func extractParams(request mcp.CallToolRequest) map[string]interface{} {
 }
 
 // Helper function to extract string array parameter
-func extractStringArray(params map[string]interface{}, key string) []string {
+func extractStringArray(params map[string]any, key string) []string {
 	if val, ok := params[key]; ok {
-		if arr, ok := val.([]interface{}); ok {
+		if arr, ok := val.([]any); ok {
 			result := make([]string, 0, len(arr))
 			for _, item := range arr {
 				if str, ok := item.(string); ok {
@@ -322,7 +443,7 @@ func resolveTenantOrgID(ctx context.Context, sc *server.ServerContext, explicit 
 
 // createClientFromParams creates a Prometheus client from request parameters,
 // applying OAuth tenancy resolution for the X-Scope-OrgID header when enabled.
-func createClientFromParams(ctx context.Context, params map[string]interface{}, defaultClient *Client, sc *server.ServerContext) (*Client, error) {
+func createClientFromParams(ctx context.Context, params map[string]any, defaultClient *Client, sc *server.ServerContext) (*Client, error) {
 	prometheusURL, hasURL := params["prometheus_url"].(string)
 	explicitOrgID, _ := params["org_id"].(string)
 
@@ -388,8 +509,7 @@ func handleExecuteQuery(ctx context.Context, request mcp.CallToolRequest, client
 	}
 
 	timeParam, _ := params["time"].(string)
-	unlimitedStr, _ := params["unlimited"].(string)
-	unlimited := unlimitedStr == "true"
+	unlimited := isUnlimitedRequest(request)
 
 	// Extract new optional parameters
 	options := QueryOptions{
@@ -490,8 +610,7 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 			},
 		}, nil
 	}
-	unlimitedStr, _ := params["unlimited"].(string)
-	unlimited := unlimitedStr == "true"
+	unlimited := isUnlimitedRequest(request)
 
 	// Extract new optional parameters
 	options := QueryOptions{
@@ -1166,7 +1285,7 @@ func handleCheckReady(ctx context.Context, request mcp.CallToolRequest, client *
 }
 
 // Helper function to safely get string parameter
-func getStringParam(params map[string]interface{}, key string) string {
+func getStringParam(params map[string]any, key string) string {
 	if val, ok := params[key].(string); ok {
 		return val
 	}
