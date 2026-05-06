@@ -236,6 +236,9 @@ func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.
 		mcp.WithDescription(description),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithOpenWorldHintAnnotation(false),
+		// Combined with WithInputSchemaValidation() (server-level), this rejects
+		// unknown property names so typo'd args surface as errors — SEP-1303.
+		mcp.WithSchemaAdditionalProperties(false),
 	}
 	tool := mcp.NewTool(toolName, append(baseOptions, allOptions...)...)
 
