@@ -73,6 +73,20 @@ const (
 	// tool. Use it for tools whose output is bounded in practice
 	// (get_build_info, get_flags, …).
 	noTruncation = ""
+
+	// contentTypeText is the discriminator value used in mcp.TextContent.Type
+	// for plain-text MCP tool responses.
+	contentTypeText = "text"
+
+	// toolExecuteQuery is the registered name of the PromQL instant-query tool.
+	toolExecuteQuery = "execute_query"
+
+	// toolExecuteRangeQuery is the registered name of the PromQL range-query tool.
+	toolExecuteRangeQuery = "execute_range_query"
+
+	// errQueryParameterRequired is returned when a query handler is called without
+	// the required "query" argument.
+	errQueryParameterRequired = "Error: query parameter is required and must be a string"
 )
 
 // Common parameter builders to reduce repetition
@@ -145,7 +159,7 @@ type ToolMiddleware func(
 // no other safety valve.
 func allowsUnlimited(name string) bool {
 	switch name {
-	case "execute_query", "execute_range_query":
+	case toolExecuteQuery, toolExecuteRangeQuery:
 		return true
 	}
 	return false
@@ -211,7 +225,7 @@ func withDynamicPrometheusClient(handler PrometheusHandler, client *Client, sc *
 				IsError: true,
 				Content: []mcp.Content{
 					mcp.TextContent{
-						Type: "text",
+						Type: contentTypeText,
 						Text: fmt.Sprintf("Error creating Prometheus client: %v", err),
 					},
 				},
@@ -269,13 +283,13 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 	}
 
 	// Query execution tools
-	registerPrometheusTools(s, client, sc, middleware, "execute_query", "Execute a PromQL instant query against Prometheus",
+	registerPrometheusTools(s, client, sc, middleware, toolExecuteQuery, "Execute a PromQL instant query against Prometheus",
 		TruncationAdvice, handleExecuteQuery, withQueryEnhancementParams(
 			mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string")),
 			mcp.WithString("time", mcp.Description("Optional RFC3339 or Unix timestamp (default: current time)")),
 		)...)
 
-	registerPrometheusTools(s, client, sc, middleware, "execute_range_query", "Execute a PromQL range query with start time, end time, and step interval",
+	registerPrometheusTools(s, client, sc, middleware, toolExecuteRangeQuery, "Execute a PromQL range query with start time, end time, and step interval",
 		TruncationAdvice, handleExecuteRangeQuery, withQueryEnhancementParams(
 			mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string")),
 			mcp.WithString("start", mcp.Required(), mcp.Description("Start time as RFC3339 or Unix timestamp")),
@@ -504,8 +518,8 @@ func handleExecuteQuery(ctx context.Context, request mcp.CallToolRequest, client
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
-					Text: "Error: query parameter is required and must be a string",
+					Type: contentTypeText,
+					Text: errQueryParameterRequired,
 				},
 			},
 		}, nil
@@ -539,7 +553,7 @@ func handleExecuteQuery(ctx context.Context, request mcp.CallToolRequest, client
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error executing query: %v", err),
 				},
 			},
@@ -551,7 +565,7 @@ func handleExecuteQuery(ctx context.Context, request mcp.CallToolRequest, client
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: formattedResult,
 			},
 		},
@@ -568,8 +582,8 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
-					Text: "Error: query parameter is required and must be a string",
+					Type: contentTypeText,
+					Text: errQueryParameterRequired,
 				},
 			},
 		}, nil
@@ -581,7 +595,7 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: "Error: start parameter is required and must be a string",
 				},
 			},
@@ -594,7 +608,7 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: "Error: end parameter is required and must be a string",
 				},
 			},
@@ -607,7 +621,7 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: "Error: step parameter is required and must be a string",
 				},
 			},
@@ -640,7 +654,7 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error executing range query: %v", err),
 				},
 			},
@@ -652,7 +666,7 @@ func handleExecuteRangeQuery(ctx context.Context, request mcp.CallToolRequest, c
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: formattedResult,
 			},
 		},
@@ -669,7 +683,7 @@ func handleGetMetricMetadata(ctx context.Context, request mcp.CallToolRequest, c
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: "Error: metric parameter is required and must be a string",
 				},
 			},
@@ -688,7 +702,7 @@ func handleGetMetricMetadata(ctx context.Context, request mcp.CallToolRequest, c
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error getting metadata for metric '%s': %v", metric, err),
 				},
 			},
@@ -698,7 +712,7 @@ func handleGetMetricMetadata(ctx context.Context, request mcp.CallToolRequest, c
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: fmt.Sprintf("Metadata for metric '%s':\n%+v", metric, metadata),
 			},
 		},
@@ -716,7 +730,7 @@ func handleGetTargets(ctx context.Context, request mcp.CallToolRequest, client *
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error getting targets: %v", err),
 				},
 			},
@@ -733,7 +747,7 @@ func handleGetTargets(ctx context.Context, request mcp.CallToolRequest, client *
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: result,
 			},
 		},
@@ -761,7 +775,7 @@ func handleListLabelNames(ctx context.Context, request mcp.CallToolRequest, clie
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error listing label names: %v", err),
 				},
 			},
@@ -785,7 +799,7 @@ func handleListLabelNames(ctx context.Context, request mcp.CallToolRequest, clie
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: responseText,
 			},
 		},
@@ -802,7 +816,7 @@ func handleListLabelValues(ctx context.Context, request mcp.CallToolRequest, cli
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: "Error: label parameter is required and must be a string",
 				},
 			},
@@ -824,7 +838,7 @@ func handleListLabelValues(ctx context.Context, request mcp.CallToolRequest, cli
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error listing label values for '%s': %v", label, err),
 				},
 			},
@@ -853,7 +867,7 @@ func handleListLabelValues(ctx context.Context, request mcp.CallToolRequest, cli
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: responseText,
 			},
 		},
@@ -870,7 +884,7 @@ func handleFindSeries(ctx context.Context, request mcp.CallToolRequest, client *
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: "Error: matches parameter is required and must be an array of strings",
 				},
 			},
@@ -891,7 +905,7 @@ func handleFindSeries(ctx context.Context, request mcp.CallToolRequest, client *
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error finding series: %v", err),
 				},
 			},
@@ -920,7 +934,7 @@ func handleFindSeries(ctx context.Context, request mcp.CallToolRequest, client *
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: responseText,
 			},
 		},
@@ -938,7 +952,7 @@ func handleGetRules(ctx context.Context, request mcp.CallToolRequest, client *Cl
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error getting rules: %v", err),
 				},
 			},
@@ -948,7 +962,7 @@ func handleGetRules(ctx context.Context, request mcp.CallToolRequest, client *Cl
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: fmt.Sprintf("Prometheus Rules:\n%+v", rules),
 			},
 		},
@@ -966,7 +980,7 @@ func handleGetAlerts(ctx context.Context, request mcp.CallToolRequest, client *C
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error getting alerts: %v", err),
 				},
 			},
@@ -976,7 +990,7 @@ func handleGetAlerts(ctx context.Context, request mcp.CallToolRequest, client *C
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: fmt.Sprintf("Active Alerts:\n%+v", alerts),
 			},
 		},
@@ -994,7 +1008,7 @@ func handleGetAlertManagers(ctx context.Context, request mcp.CallToolRequest, cl
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error getting alert managers: %v", err),
 				},
 			},
@@ -1004,7 +1018,7 @@ func handleGetAlertManagers(ctx context.Context, request mcp.CallToolRequest, cl
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: fmt.Sprintf("AlertManager Discovery:\n%+v", alertManagers),
 			},
 		},
@@ -1022,7 +1036,7 @@ func handleGetConfig(ctx context.Context, request mcp.CallToolRequest, client *C
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error getting config: %v", err),
 				},
 			},
@@ -1032,7 +1046,7 @@ func handleGetConfig(ctx context.Context, request mcp.CallToolRequest, client *C
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: fmt.Sprintf("Prometheus Configuration:\n%+v", config),
 			},
 		},
@@ -1050,7 +1064,7 @@ func handleGetFlags(ctx context.Context, request mcp.CallToolRequest, client *Cl
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error getting flags: %v", err),
 				},
 			},
@@ -1060,7 +1074,7 @@ func handleGetFlags(ctx context.Context, request mcp.CallToolRequest, client *Cl
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: fmt.Sprintf("Prometheus Runtime Flags:\n%+v", flags),
 			},
 		},
@@ -1078,7 +1092,7 @@ func handleGetBuildInfo(ctx context.Context, request mcp.CallToolRequest, client
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error getting build info: %v", err),
 				},
 			},
@@ -1088,7 +1102,7 @@ func handleGetBuildInfo(ctx context.Context, request mcp.CallToolRequest, client
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: fmt.Sprintf("Prometheus Build Information:\n%+v", buildInfo),
 			},
 		},
@@ -1106,7 +1120,7 @@ func handleGetRuntimeInfo(ctx context.Context, request mcp.CallToolRequest, clie
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error getting runtime info: %v", err),
 				},
 			},
@@ -1116,7 +1130,7 @@ func handleGetRuntimeInfo(ctx context.Context, request mcp.CallToolRequest, clie
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: fmt.Sprintf("Prometheus Runtime Information:\n%+v", runtimeInfo),
 			},
 		},
@@ -1139,7 +1153,7 @@ func handleGetTSDBStats(ctx context.Context, request mcp.CallToolRequest, client
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error getting TSDB stats: %v", err),
 				},
 			},
@@ -1149,7 +1163,7 @@ func handleGetTSDBStats(ctx context.Context, request mcp.CallToolRequest, client
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: fmt.Sprintf("TSDB Statistics:\n%+v", tsdbStats),
 			},
 		},
@@ -1166,8 +1180,8 @@ func handleQueryExemplars(ctx context.Context, request mcp.CallToolRequest, clie
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
-					Text: "Error: query parameter is required and must be a string",
+					Type: contentTypeText,
+					Text: errQueryParameterRequired,
 				},
 			},
 		}, nil
@@ -1179,7 +1193,7 @@ func handleQueryExemplars(ctx context.Context, request mcp.CallToolRequest, clie
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: "Error: start parameter is required and must be a string",
 				},
 			},
@@ -1192,7 +1206,7 @@ func handleQueryExemplars(ctx context.Context, request mcp.CallToolRequest, clie
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: "Error: end parameter is required and must be a string",
 				},
 			},
@@ -1207,7 +1221,7 @@ func handleQueryExemplars(ctx context.Context, request mcp.CallToolRequest, clie
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error querying exemplars: %v", err),
 				},
 			},
@@ -1217,7 +1231,7 @@ func handleQueryExemplars(ctx context.Context, request mcp.CallToolRequest, clie
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: fmt.Sprintf("Exemplars for query '%s':\n%+v", query, exemplars),
 			},
 		},
@@ -1240,7 +1254,7 @@ func handleGetTargetsMetadata(ctx context.Context, request mcp.CallToolRequest, 
 			IsError: true,
 			Content: []mcp.Content{
 				mcp.TextContent{
-					Type: "text",
+					Type: contentTypeText,
 					Text: fmt.Sprintf("Error getting targets metadata: %v", err),
 				},
 			},
@@ -1250,7 +1264,7 @@ func handleGetTargetsMetadata(ctx context.Context, request mcp.CallToolRequest, 
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
-				Type: "text",
+				Type: contentTypeText,
 				Text: fmt.Sprintf("Targets Metadata:\n%+v", targetsMetadata),
 			},
 		},
@@ -1267,7 +1281,7 @@ func handleCheckReady(ctx context.Context, request mcp.CallToolRequest, client *
 		return &mcp.CallToolResult{
 			IsError: true,
 			Content: []mcp.Content{
-				mcp.TextContent{Type: "text", Text: fmt.Sprintf("Error checking readiness: %v", err)},
+				mcp.TextContent{Type: contentTypeText, Text: fmt.Sprintf("Error checking readiness: %v", err)},
 			},
 		}, nil
 	}
@@ -1276,13 +1290,13 @@ func handleCheckReady(ctx context.Context, request mcp.CallToolRequest, client *
 		return &mcp.CallToolResult{
 			IsError: true,
 			Content: []mcp.Content{
-				mcp.TextContent{Type: "text", Text: fmt.Sprintf("Prometheus is not ready (HTTP %d): %s", status.StatusCode, status.Message)},
+				mcp.TextContent{Type: contentTypeText, Text: fmt.Sprintf("Prometheus is not ready (HTTP %d): %s", status.StatusCode, status.Message)},
 			},
 		}, nil
 	}
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			mcp.TextContent{Type: "text", Text: fmt.Sprintf("Prometheus is ready (HTTP %d): %s", status.StatusCode, status.Message)},
+			mcp.TextContent{Type: contentTypeText, Text: fmt.Sprintf("Prometheus is ready (HTTP %d): %s", status.StatusCode, status.Message)},
 		},
 	}, nil
 }

@@ -5,7 +5,7 @@ import (
 )
 
 func TestNewResolverForMode_Static_AllUsers(t *testing.T) {
-	r, err := NewResolverForMode(ModeStatic, []string{"prod-eu"}, nil)
+	r, err := NewResolverForMode(ModeStatic, []string{tenantProdEU}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -15,7 +15,7 @@ func TestNewResolverForMode_Static_AllUsers(t *testing.T) {
 }
 
 func TestNewResolverForMode_Static_GroupMap(t *testing.T) {
-	r, err := NewResolverForMode(ModeStatic, nil, map[string][]string{"team-ops": {"prod-eu"}})
+	r, err := NewResolverForMode(ModeStatic, nil, map[string][]string{groupTeamOps: {tenantProdEU}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

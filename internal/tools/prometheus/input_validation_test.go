@@ -27,7 +27,7 @@ func TestInputSchemaValidation_RejectsUnknownProperty(t *testing.T) {
 	srv, _, cleanup := newValidatingServer(t)
 	defer cleanup()
 
-	resp := dispatchToolCall(t, srv, "execute_query", map[string]any{
+	resp := dispatchToolCall(t, srv, toolExecuteQuery, map[string]any{
 		"quary": "up", // intentional typo of "query"
 	})
 
@@ -82,8 +82,8 @@ func TestInputSchemaValidation_AcceptsKnownProperty(t *testing.T) {
 	srv, mockURL, cleanup := newValidatingServer(t)
 	defer cleanup()
 
-	resp := dispatchToolCall(t, srv, "execute_query", map[string]any{
-		"query":          "up",
+	resp := dispatchToolCall(t, srv, toolExecuteQuery, map[string]any{
+		paramKeyQuery:    "up",
 		"prometheus_url": mockURL,
 	})
 
@@ -116,8 +116,8 @@ func newValidatingServer(t *testing.T) (*mcpserver.MCPServer, string, func()) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == apiQueryPath {
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"status": "success",
-				"data":   map[string]any{"resultType": "vector", "result": []any{}},
+				respKeyStatus: respValSuccess,
+				respKeyData:   map[string]any{respKeyResultType: respValVector, respKeyResult: []any{}},
 			})
 			return
 		}

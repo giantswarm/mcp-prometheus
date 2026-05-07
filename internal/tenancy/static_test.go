@@ -7,16 +7,20 @@ import (
 
 const (
 	tenantProdEU    = "prod-eu"
+	tenantProdUS    = "prod-us"
+	tenantStaging   = "staging"
+	groupTeamOps    = "team-ops"
+	groupTeamDev    = "team-dev"
 	overwrittenMark = "OVERWRITTEN"
 )
 
 func TestStaticResolver_AllUsersMode_ReturnsFixedList(t *testing.T) {
-	r := NewStaticResolver([]string{tenantProdEU, "staging"}, nil)
+	r := NewStaticResolver([]string{tenantProdEU, tenantStaging}, nil)
 	tenants, err := r.TenantsForGroups(context.Background(), []string{"any-group"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(tenants) != 2 || tenants[0] != tenantProdEU || tenants[1] != "staging" {
+	if len(tenants) != 2 || tenants[0] != tenantProdEU || tenants[1] != tenantStaging {
 		t.Errorf("got %v, want [prod-eu staging]", tenants)
 	}
 }
@@ -34,7 +38,7 @@ func TestStaticResolver_AllUsersMode_NilGroups(t *testing.T) {
 
 func TestStaticResolver_AllUsersMode_EmptyGroupMap(t *testing.T) {
 	r := NewStaticResolver([]string{tenantProdEU}, map[string][]string{})
-	tenants, err := r.TenantsForGroups(context.Background(), []string{"team-ops"})
+	tenants, err := r.TenantsForGroups(context.Background(), []string{groupTeamOps})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -44,7 +48,7 @@ func TestStaticResolver_AllUsersMode_EmptyGroupMap(t *testing.T) {
 }
 
 func TestStaticResolver_AllUsersMode_MutationIsolation(t *testing.T) {
-	input := []string{tenantProdEU, "staging"}
+	input := []string{tenantProdEU, tenantStaging}
 	r := NewStaticResolver(input, nil)
 
 	// Mutate the input slice after construction.
@@ -71,29 +75,29 @@ func TestStaticResolver_AllUsersMode_ReturnCopyIsolation(t *testing.T) {
 
 func TestStaticResolver_GroupMapping_SingleMatch(t *testing.T) {
 	r := NewStaticResolver(nil, map[string][]string{
-		"team-ops": {tenantProdEU, "prod-us"},
-		"team-dev": {"staging"},
+		groupTeamOps: {tenantProdEU, tenantProdUS},
+		groupTeamDev: {tenantStaging},
 	})
-	tenants, err := r.TenantsForGroups(context.Background(), []string{"team-ops"})
+	tenants, err := r.TenantsForGroups(context.Background(), []string{groupTeamOps})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(tenants) != 2 || tenants[0] != tenantProdEU || tenants[1] != "prod-us" {
+	if len(tenants) != 2 || tenants[0] != tenantProdEU || tenants[1] != tenantProdUS {
 		t.Errorf("got %v, want [prod-eu prod-us]", tenants)
 	}
 }
 
 func TestStaticResolver_GroupMapping_MultipleGroups_UnionAndDedup(t *testing.T) {
 	r := NewStaticResolver(nil, map[string][]string{
-		"team-ops": {tenantProdEU, "prod-us"},
-		"team-dev": {tenantProdEU, "staging"}, // prod-eu shared
+		groupTeamOps: {tenantProdEU, tenantProdUS},
+		groupTeamDev: {tenantProdEU, tenantStaging}, // prod-eu shared
 	})
-	tenants, err := r.TenantsForGroups(context.Background(), []string{"team-ops", "team-dev"})
+	tenants, err := r.TenantsForGroups(context.Background(), []string{groupTeamOps, groupTeamDev})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// Expect sorted, deduplicated union.
-	want := []string{tenantProdEU, "prod-us", "staging"}
+	want := []string{tenantProdEU, tenantProdUS, tenantStaging}
 	if len(tenants) != len(want) {
 		t.Fatalf("got %v, want %v", tenants, want)
 	}
@@ -106,7 +110,7 @@ func TestStaticResolver_GroupMapping_MultipleGroups_UnionAndDedup(t *testing.T) 
 
 func TestStaticResolver_GroupMapping_NoMatch(t *testing.T) {
 	r := NewStaticResolver(nil, map[string][]string{
-		"team-ops": {tenantProdEU},
+		groupTeamOps: {tenantProdEU},
 	})
 	tenants, err := r.TenantsForGroups(context.Background(), []string{"team-unknown"})
 	if err != nil {
@@ -119,7 +123,7 @@ func TestStaticResolver_GroupMapping_NoMatch(t *testing.T) {
 
 func TestStaticResolver_GroupMapping_NilGroups(t *testing.T) {
 	r := NewStaticResolver(nil, map[string][]string{
-		"team-ops": {tenantProdEU},
+		groupTeamOps: {tenantProdEU},
 	})
 	tenants, err := r.TenantsForGroups(context.Background(), nil)
 	if err != nil {
@@ -133,9 +137,9 @@ func TestStaticResolver_GroupMapping_NilGroups(t *testing.T) {
 func TestStaticResolver_GroupMapping_TakesPrecedenceOverAllTenants(t *testing.T) {
 	// When groupMap is non-empty, allTenants must be ignored.
 	r := NewStaticResolver([]string{"should-be-ignored"}, map[string][]string{
-		"team-ops": {tenantProdEU},
+		groupTeamOps: {tenantProdEU},
 	})
-	tenants, err := r.TenantsForGroups(context.Background(), []string{"team-ops"})
+	tenants, err := r.TenantsForGroups(context.Background(), []string{groupTeamOps})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -146,15 +150,15 @@ func TestStaticResolver_GroupMapping_TakesPrecedenceOverAllTenants(t *testing.T)
 
 func TestStaticResolver_GroupMapping_MutationIsolation(t *testing.T) {
 	groupMap := map[string][]string{
-		"team-ops": {tenantProdEU},
+		groupTeamOps: {tenantProdEU},
 	}
 	r := NewStaticResolver(nil, groupMap)
 
 	// Mutate the map and its values after construction.
-	groupMap["team-ops"][0] = overwrittenMark
-	groupMap["team-new"] = []string{"staging"}
+	groupMap[groupTeamOps][0] = overwrittenMark
+	groupMap["team-new"] = []string{tenantStaging}
 
-	tenants, _ := r.TenantsForGroups(context.Background(), []string{"team-ops"})
+	tenants, _ := r.TenantsForGroups(context.Background(), []string{groupTeamOps})
 	if len(tenants) != 1 || tenants[0] != tenantProdEU {
 		t.Errorf("resolver was affected by external mutation: got %v", tenants)
 	}
