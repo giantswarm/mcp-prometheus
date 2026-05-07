@@ -8,6 +8,12 @@ import (
 	"github.com/giantswarm/mcp-oauth/providers/mock"
 )
 
+const (
+	testSecret    = "secret"
+	testDexIssuer = "https://dex.example.com"
+	testMCPIssuer = "https://mcp.example.com"
+)
+
 func TestConfigFromEnvDefaults(t *testing.T) {
 	// Clear any OAuth env vars to test defaults. ConfigFromEnv uses os.Getenv,
 	// which returns "" whether the var is unset or empty, so t.Setenv(key, "")
@@ -43,12 +49,12 @@ func TestConfigFromEnvReadsValues(t *testing.T) {
 	t.Setenv("MCP_OAUTH_ISSUER", "https://issuer.example.com")
 	t.Setenv("MCP_OAUTH_ENCRYPTION_KEY", "deadbeef")
 	t.Setenv("MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION", "true")
-	t.Setenv("OAUTH_STORAGE", "valkey")
+	t.Setenv("OAUTH_STORAGE", storageTypeValkey)
 	t.Setenv("VALKEY_URL", "valkey://localhost:6379")
-	t.Setenv("VALKEY_PASSWORD", "secret")
+	t.Setenv("VALKEY_PASSWORD", testSecret)
 	t.Setenv("VALKEY_TLS_ENABLED", "true")
 	t.Setenv("VALKEY_KEY_PREFIX", "myapp:")
-	t.Setenv("DEX_ISSUER_URL", "https://dex.example.com")
+	t.Setenv("DEX_ISSUER_URL", testDexIssuer)
 	t.Setenv("DEX_CLIENT_ID", "mcp-prometheus")
 	t.Setenv("DEX_CLIENT_SECRET", "dexsecret")
 	t.Setenv("DEX_REDIRECT_URL", "https://app.example.com/oauth/callback")
@@ -62,11 +68,11 @@ func TestConfigFromEnvReadsValues(t *testing.T) {
 	}{
 		{"Issuer", cfg.Issuer, "https://issuer.example.com"},
 		{"EncryptionKey", cfg.EncryptionKey, "deadbeef"},
-		{"StorageType", cfg.StorageType, "valkey"},
+		{"StorageType", cfg.StorageType, storageTypeValkey},
 		{"ValkeyURL", cfg.ValkeyURL, "valkey://localhost:6379"},
-		{"ValkeyPassword", cfg.ValkeyPassword, "secret"},
+		{"ValkeyPassword", cfg.ValkeyPassword, testSecret},
 		{"ValkeyKeyPrefix", cfg.ValkeyKeyPrefix, "myapp:"},
-		{"DexIssuerURL", cfg.DexIssuerURL, "https://dex.example.com"},
+		{"DexIssuerURL", cfg.DexIssuerURL, testDexIssuer},
 		{"DexClientID", cfg.DexClientID, "mcp-prometheus"},
 		{"DexClientSecret", cfg.DexClientSecret, "dexsecret"},
 		{"DexRedirectURL", cfg.DexRedirectURL, "https://app.example.com/oauth/callback"},
@@ -97,9 +103,9 @@ func TestConfigFromEnvAllowPrivateURLs(t *testing.T) {
 
 func TestNewHandlerMissingIssuer(t *testing.T) {
 	cfg := Config{
-		DexIssuerURL:    "https://dex.example.com",
+		DexIssuerURL:    testDexIssuer,
 		DexClientID:     "id",
-		DexClientSecret: "secret",
+		DexClientSecret: testSecret,
 		DexRedirectURL:  "https://app.example.com/callback",
 	}
 	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
@@ -110,9 +116,9 @@ func TestNewHandlerMissingIssuer(t *testing.T) {
 
 func TestNewHandlerMissingDexIssuer(t *testing.T) {
 	cfg := Config{
-		Issuer:          "https://mcp.example.com",
+		Issuer:          testMCPIssuer,
 		DexClientID:     "id",
-		DexClientSecret: "secret",
+		DexClientSecret: testSecret,
 		DexRedirectURL:  "https://app.example.com/callback",
 	}
 	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
@@ -123,10 +129,10 @@ func TestNewHandlerMissingDexIssuer(t *testing.T) {
 
 func TestNewHandlerMissingRedirectURL(t *testing.T) {
 	cfg := Config{
-		Issuer:          "https://mcp.example.com",
-		DexIssuerURL:    "https://dex.example.com",
+		Issuer:          testMCPIssuer,
+		DexIssuerURL:    testDexIssuer,
 		DexClientID:     "id",
-		DexClientSecret: "secret",
+		DexClientSecret: testSecret,
 		// DexRedirectURL intentionally missing
 	}
 	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
@@ -152,7 +158,7 @@ func TestNewStoreMemory(t *testing.T) {
 }
 
 func TestNewStoreValkeyMissingURL(t *testing.T) {
-	_, _, err := newStore(context.Background(), Config{StorageType: "valkey", ValkeyURL: ""}, slog.Default())
+	_, _, err := newStore(context.Background(), Config{StorageType: storageTypeValkey, ValkeyURL: ""}, slog.Default())
 	if err == nil {
 		t.Error("expected error when VALKEY_URL is empty with valkey storage type")
 	}
@@ -193,7 +199,7 @@ func TestNewValkeyStoreKeyPrefixBranch(t *testing.T) {
 func TestNewHandlerWithProviderMemoryStore(t *testing.T) {
 	p := mock.NewProvider()
 	cfg := Config{
-		Issuer:                  "https://mcp.example.com",
+		Issuer:                  testMCPIssuer,
 		AllowPublicRegistration: true,
 	}
 	h, cleanup, err := newHandlerWithProvider(context.Background(), p, cfg, slog.Default())
@@ -211,7 +217,7 @@ func TestNewHandlerWithProviderShortEncryptionKey(t *testing.T) {
 	// security.NewEncryptor (AES-256 requires exactly 32 bytes).
 	p := mock.NewProvider()
 	cfg := Config{
-		Issuer:        "https://mcp.example.com",
+		Issuer:        testMCPIssuer,
 		EncryptionKey: "0102030405", // 5 bytes, not 32
 	}
 	_, _, err := newHandlerWithProvider(context.Background(), p, cfg, slog.Default())

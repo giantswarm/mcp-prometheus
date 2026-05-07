@@ -7,11 +7,13 @@ import (
 	"testing"
 )
 
+const tenantA = "tenant-a"
+
 // stubResolver implements TenancyResolver for testing.
 type stubResolver struct{}
 
 func (s *stubResolver) TenantsForGroups(_ context.Context, _ []string) ([]string, error) {
-	return []string{"tenant-a"}, nil
+	return []string{tenantA}, nil
 }
 
 func TestWithOAuthEnabled(t *testing.T) {
@@ -111,7 +113,7 @@ func TestContextNotNil(t *testing.T) {
 }
 
 func TestPrometheusConfigOption(t *testing.T) {
-	cfg := PrometheusConfig{URL: "http://prom:9090", OrgID: "tenant-a"}
+	cfg := PrometheusConfig{URL: "http://prom:9090", OrgID: tenantA}
 	sc, err := NewServerContext(context.Background(), WithPrometheusConfig(cfg))
 	if err != nil {
 		t.Fatal(err)
@@ -120,7 +122,7 @@ func TestPrometheusConfigOption(t *testing.T) {
 	if got.URL != "http://prom:9090" {
 		t.Errorf("unexpected URL: %s", got.URL)
 	}
-	if got.OrgID != "tenant-a" {
+	if got.OrgID != tenantA {
 		t.Errorf("unexpected OrgID: %s", got.OrgID)
 	}
 }

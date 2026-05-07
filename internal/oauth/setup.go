@@ -85,6 +85,9 @@ type Config struct {
 // envTrue is the string value that enables a boolean env var.
 const envTrue = "true"
 
+// storageTypeValkey selects the Valkey-backed token store via OAUTH_STORAGE.
+const storageTypeValkey = "valkey"
+
 // ConfigFromEnv builds a Config by reading the standard environment variables.
 func ConfigFromEnv() Config {
 	cfg := Config{
@@ -203,7 +206,7 @@ type combinedStore interface {
 
 // newStore creates the token storage backend based on cfg.StorageType.
 func newStore(_ context.Context, cfg Config, _ *slog.Logger) (combinedStore, func(), error) {
-	if cfg.StorageType == "valkey" {
+	if cfg.StorageType == storageTypeValkey {
 		return newValkeyStore(cfg)
 	}
 	// Default: in-process memory store (dev / single-replica).

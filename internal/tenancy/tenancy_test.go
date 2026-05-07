@@ -12,6 +12,8 @@ import (
 
 // helpers
 
+const nameKey = "name"
+
 func grafanaOrg(name string, admins, editors, viewers []string, tenantNames []string) *unstructured.Unstructured {
 	toIface := func(ss []string) []interface{} {
 		out := make([]interface{}, len(ss))
@@ -22,7 +24,7 @@ func grafanaOrg(name string, admins, editors, viewers []string, tenantNames []st
 	}
 	tenants := make([]interface{}, len(tenantNames))
 	for i, t := range tenantNames {
-		tenants[i] = map[string]interface{}{"name": t}
+		tenants[i] = map[string]interface{}{nameKey: t}
 	}
 	rbac := map[string]interface{}{}
 	if len(admins) > 0 {
@@ -38,7 +40,7 @@ func grafanaOrg(name string, admins, editors, viewers []string, tenantNames []st
 		Object: map[string]interface{}{
 			"apiVersion": "observability.giantswarm.io/v1alpha2",
 			"kind":       "GrafanaOrganization",
-			"metadata":   map[string]interface{}{"name": name},
+			"metadata":   map[string]interface{}{nameKey: name},
 			"spec": map[string]interface{}{
 				"rbac":    rbac,
 				"tenants": tenants,
@@ -87,12 +89,12 @@ func TestSelectOrgIDNoTenants(t *testing.T) {
 }
 
 func TestSelectOrgIDSingleTenantNoOverride(t *testing.T) {
-	got, err := SelectOrgID([]string{"prod-eu"}, "")
+	got, err := SelectOrgID([]string{tenantProdEU}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "prod-eu" {
-		t.Errorf("expected %q, got %q", "prod-eu", got)
+	if got != tenantProdEU {
+		t.Errorf("expected %q, got %q", tenantProdEU, got)
 	}
 }
 
@@ -146,10 +148,10 @@ func TestSelectOrgIDPipeSeparatedInvalid(t *testing.T) {
 // --- Resolver.TenantsForGroups ---
 
 func TestTenantsForGroupsMatch(t *testing.T) {
-	org := grafanaOrg("my-org", []string{"team-ops"}, nil, nil, []string{"prod-eu", "prod-us"})
+	org := grafanaOrg("my-org", []string{groupTeamOps}, nil, nil, []string{tenantProdEU, tenantProdUS})
 	r := newTestResolver(org)
 
-	tenants, err := r.TenantsForGroups(context.Background(), []string{"team-ops"})
+	tenants, err := r.TenantsForGroups(context.Background(), []string{groupTeamOps})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,13 +159,13 @@ func TestTenantsForGroupsMatch(t *testing.T) {
 		t.Fatalf("expected 2 tenants, got %v", tenants)
 	}
 	// Result is sorted
-	if tenants[0] != "prod-eu" || tenants[1] != "prod-us" {
+	if tenants[0] != tenantProdEU || tenants[1] != tenantProdUS {
 		t.Errorf("unexpected tenants: %v", tenants)
 	}
 }
 
 func TestTenantsForGroupsNoMatch(t *testing.T) {
-	org := grafanaOrg("my-org", []string{"team-ops"}, nil, nil, []string{"prod-eu"})
+	org := grafanaOrg("my-org", []string{groupTeamOps}, nil, nil, []string{tenantProdEU})
 	r := newTestResolver(org)
 
 	tenants, err := r.TenantsForGroups(context.Background(), []string{"other-team"})
@@ -176,14 +178,14 @@ func TestTenantsForGroupsNoMatch(t *testing.T) {
 }
 
 func TestTenantsForGroupsEditorMatch(t *testing.T) {
-	org := grafanaOrg("my-org", nil, []string{"team-dev"}, nil, []string{"staging"})
+	org := grafanaOrg("my-org", nil, []string{groupTeamDev}, nil, []string{tenantStaging})
 	r := newTestResolver(org)
 
-	tenants, err := r.TenantsForGroups(context.Background(), []string{"team-dev"})
+	tenants, err := r.TenantsForGroups(context.Background(), []string{groupTeamDev})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tenants) != 1 || tenants[0] != "staging" {
+	if len(tenants) != 1 || tenants[0] != tenantStaging {
 		t.Errorf("expected [staging], got %v", tenants)
 	}
 }
@@ -203,11 +205,11 @@ func TestTenantsForGroupsViewerMatch(t *testing.T) {
 
 func TestTenantsForGroupsDeduplication(t *testing.T) {
 	// Two orgs with overlapping tenants — result should be deduplicated.
-	org1 := grafanaOrg("org1", []string{"team-ops"}, nil, nil, []string{"shared", "prod-eu"})
-	org2 := grafanaOrg("org2", []string{"team-ops"}, nil, nil, []string{"shared", "prod-us"})
+	org1 := grafanaOrg("org1", []string{groupTeamOps}, nil, nil, []string{"shared", tenantProdEU})
+	org2 := grafanaOrg("org2", []string{groupTeamOps}, nil, nil, []string{"shared", tenantProdUS})
 	r := newTestResolver(org1, org2)
 
-	tenants, err := r.TenantsForGroups(context.Background(), []string{"team-ops"})
+	tenants, err := r.TenantsForGroups(context.Background(), []string{groupTeamOps})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,15 +219,15 @@ func TestTenantsForGroupsDeduplication(t *testing.T) {
 }
 
 func TestTenantsForGroupsCaching(t *testing.T) {
-	org := grafanaOrg("my-org", []string{"team-ops"}, nil, nil, []string{"prod-eu"})
+	org := grafanaOrg("my-org", []string{groupTeamOps}, nil, nil, []string{tenantProdEU})
 	r := newTestResolver(org)
 
-	tenants1, err := r.TenantsForGroups(context.Background(), []string{"team-ops"})
+	tenants1, err := r.TenantsForGroups(context.Background(), []string{groupTeamOps})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Second call should return cached result (same slice)
-	tenants2, err := r.TenantsForGroups(context.Background(), []string{"team-ops"})
+	tenants2, err := r.TenantsForGroups(context.Background(), []string{groupTeamOps})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +242,7 @@ func TestTenantsForGroupsEmptyOrg(t *testing.T) {
 		Object: map[string]interface{}{
 			"apiVersion": "observability.giantswarm.io/v1alpha2",
 			"kind":       "GrafanaOrganization",
-			"metadata":   map[string]interface{}{"name": "empty-org"},
+			"metadata":   map[string]interface{}{nameKey: "empty-org"},
 		},
 	}
 	r := newTestResolver(empty)

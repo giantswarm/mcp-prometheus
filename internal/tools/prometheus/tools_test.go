@@ -18,7 +18,20 @@ import (
 	"github.com/giantswarm/mcp-prometheus/internal/server"
 )
 
-const apiQueryPath = "/api/v1/query"
+const (
+	apiQueryPath = "/api/v1/query"
+
+	respKeyStatus       = "status"
+	respKeyData         = "data"
+	respKeyResult       = "result"
+	respKeyResultType   = "resultType"
+	respValSuccess      = "success"
+	respValVector       = "vector"
+	paramKeyQuery       = "query"
+	bodyPrometheusReady = "Prometheus is Ready."
+	readyMsg            = "ready"
+	notReadyMsg         = "not ready"
+)
 
 // discardLogger returns a *slog.Logger that discards all output.
 func discardLogger() *slog.Logger {
@@ -47,8 +60,8 @@ func TestRegisterPrometheusToolsWithMiddleware(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == apiQueryPath {
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"status": "success",
-				"data":   map[string]any{"resultType": "vector", "result": []any{}},
+				respKeyStatus: respValSuccess,
+				respKeyData:   map[string]any{respKeyResultType: respValVector, respKeyResult: []any{}},
 			})
 		} else {
 			w.WriteHeader(http.StatusNotFound)
@@ -96,7 +109,7 @@ func TestRegisterPrometheusToolsWithMiddleware(t *testing.T) {
 	if len(called) == 0 {
 		t.Fatal("expected middleware to be invoked via server dispatch, but called is empty")
 	}
-	if called[0] != "execute_query" {
+	if called[0] != toolExecuteQuery {
 		t.Errorf("expected first middleware call for execute_query, got %q", called[0])
 	}
 }
@@ -154,7 +167,7 @@ func TestClient(t *testing.T) {
 		{
 			name:     "CheckReady",
 			endpoint: "/-/ready",
-			response: "Prometheus is Ready.",
+			response: bodyPrometheusReady,
 			testFunc: func(ctx context.Context, c *Client) error {
 				status, err := c.CheckReady(ctx)
 				if err != nil {
@@ -202,10 +215,10 @@ func TestHandleExecuteQuery(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == apiQueryPath {
 			response := map[string]any{
-				"status": "success",
-				"data": map[string]any{
-					"resultType": "vector",
-					"result":     []any{},
+				respKeyStatus: respValSuccess,
+				respKeyData: map[string]any{
+					respKeyResultType: respValVector,
+					respKeyResult:     []any{},
 				},
 			}
 			_ = json.NewEncoder(w).Encode(response)
@@ -236,9 +249,9 @@ func TestHandleExecuteQuery(t *testing.T) {
 	// Test valid request
 	request := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
-			Name: "execute_query",
+			Name: toolExecuteQuery,
 			Arguments: map[string]any{
-				"query": "up",
+				paramKeyQuery: "up",
 			},
 		},
 	}
@@ -255,7 +268,7 @@ func TestHandleExecuteQuery(t *testing.T) {
 	// Test missing query parameter
 	requestBad := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
-			Name:      "execute_query",
+			Name:      toolExecuteQuery,
 			Arguments: map[string]any{},
 		},
 	}
@@ -275,10 +288,10 @@ func TestHandleExecuteRangeQuery(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/query_range" {
 			response := map[string]any{
-				"status": "success",
-				"data": map[string]any{
-					"resultType": "matrix",
-					"result":     []any{},
+				respKeyStatus: respValSuccess,
+				respKeyData: map[string]any{
+					respKeyResultType: "matrix",
+					respKeyResult:     []any{},
 				},
 			}
 			_ = json.NewEncoder(w).Encode(response)
@@ -309,12 +322,12 @@ func TestHandleExecuteRangeQuery(t *testing.T) {
 	// Test valid request
 	request := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
-			Name: "execute_range_query",
+			Name: toolExecuteRangeQuery,
 			Arguments: map[string]any{
-				"query": "up",
-				"start": "2023-01-01T00:00:00Z",
-				"end":   "2023-01-01T01:00:00Z",
-				"step":  "1m",
+				paramKeyQuery: "up",
+				"start":       "2023-01-01T00:00:00Z",
+				"end":         "2023-01-01T01:00:00Z",
+				"step":        "1m",
 			},
 		},
 	}
@@ -334,8 +347,8 @@ func TestHandleGetMetricMetadata(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/metadata" {
 			response := map[string]any{
-				"status": "success",
-				"data": map[string]any{
+				respKeyStatus: respValSuccess,
+				respKeyData: map[string]any{
 					"http_requests_total": []any{
 						map[string]any{
 							"type": "counter",
@@ -397,8 +410,8 @@ func TestCheckReady(t *testing.T) {
 		body       string
 		wantReady  bool
 	}{
-		{name: "ready", statusCode: http.StatusOK, body: "Prometheus is Ready.", wantReady: true},
-		{name: "not ready", statusCode: http.StatusServiceUnavailable, body: "Service Unavailable", wantReady: false},
+		{name: readyMsg, statusCode: http.StatusOK, body: bodyPrometheusReady, wantReady: true},
+		{name: notReadyMsg, statusCode: http.StatusServiceUnavailable, body: "Service Unavailable", wantReady: false},
 		{name: "unexpected 500", statusCode: http.StatusInternalServerError, body: "internal error", wantReady: false},
 	}
 
@@ -452,7 +465,7 @@ func TestCheckReadyMimirFallback(t *testing.T) {
 			_, _ = w.Write([]byte("not found"))
 		case "/ready":
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("ready"))
+			_, _ = w.Write([]byte(readyMsg))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -481,18 +494,18 @@ func TestHandleCheckReady(t *testing.T) {
 		wantText    string
 	}{
 		{
-			name:        "ready",
+			name:        readyMsg,
 			statusCode:  http.StatusOK,
-			body:        "Prometheus is Ready.",
+			body:        bodyPrometheusReady,
 			wantIsError: false,
-			wantText:    "ready",
+			wantText:    readyMsg,
 		},
 		{
-			name:        "not ready",
+			name:        notReadyMsg,
 			statusCode:  http.StatusServiceUnavailable,
 			body:        "not yet",
 			wantIsError: true,
-			wantText:    "not ready",
+			wantText:    notReadyMsg,
 		},
 	}
 
@@ -609,8 +622,8 @@ func TestHandleListLabelNamesTruncation(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status": "success",
-			"data":   names,
+			respKeyStatus: respValSuccess,
+			respKeyData:   names,
 		})
 	}))
 	defer mockServer.Close()
@@ -669,7 +682,7 @@ func TestTruncationMiddleware(t *testing.T) {
 	makeHandler := func(text string) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{mcp.TextContent{Type: "text", Text: text}},
+				Content: []mcp.Content{mcp.TextContent{Type: contentTypeText, Text: text}},
 			}, nil
 		}
 	}
@@ -705,21 +718,21 @@ func TestTruncationMiddleware(t *testing.T) {
 		},
 		{
 			name:       "query tool truncates with TruncationAdvice",
-			toolName:   "execute_query",
+			toolName:   toolExecuteQuery,
 			advice:     TruncationAdvice,
 			text:       bigText,
 			wantSuffix: TruncationAdvice,
 		},
 		{
 			name:       "short text passes through untouched",
-			toolName:   "execute_query",
+			toolName:   toolExecuteQuery,
 			advice:     TruncationAdvice,
 			text:       smallText,
 			wantSuffix: "",
 		},
 		{
 			name:       "unlimited=true bypasses on query tool",
-			toolName:   "execute_query",
+			toolName:   toolExecuteQuery,
 			advice:     TruncationAdvice,
 			text:       bigText,
 			unlimited:  true,
@@ -727,7 +740,7 @@ func TestTruncationMiddleware(t *testing.T) {
 		},
 		{
 			name:       "unlimited=true bypasses on range query tool",
-			toolName:   "execute_range_query",
+			toolName:   toolExecuteRangeQuery,
 			advice:     TruncationAdvice,
 			text:       bigText,
 			unlimited:  true,
@@ -783,9 +796,9 @@ func TestTruncationMiddleware(t *testing.T) {
 		h := truncationMiddleware("find_series", discoveryAdvice, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{Type: "text", Text: bigText},
-					mcp.TextContent{Type: "text", Text: smallText},
-					mcp.TextContent{Type: "text", Text: bigText},
+					mcp.TextContent{Type: contentTypeText, Text: bigText},
+					mcp.TextContent{Type: contentTypeText, Text: smallText},
+					mcp.TextContent{Type: contentTypeText, Text: bigText},
 				},
 			}, nil
 		})
@@ -809,7 +822,7 @@ func TestTruncationMiddleware(t *testing.T) {
 
 	t.Run("propagates handler errors without modification", func(t *testing.T) {
 		boom := fmt.Errorf("boom")
-		h := truncationMiddleware("execute_query", TruncationAdvice, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h := truncationMiddleware(toolExecuteQuery, TruncationAdvice, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return nil, boom
 		})
 		_, err := h(context.Background(), mcp.CallToolRequest{})
@@ -819,10 +832,10 @@ func TestTruncationMiddleware(t *testing.T) {
 	})
 
 	t.Run("preserves IsError flag on tool error results", func(t *testing.T) {
-		h := truncationMiddleware("execute_query", TruncationAdvice, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		h := truncationMiddleware(toolExecuteQuery, TruncationAdvice, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return &mcp.CallToolResult{
 				IsError: true,
-				Content: []mcp.Content{mcp.TextContent{Type: "text", Text: bigText}},
+				Content: []mcp.Content{mcp.TextContent{Type: contentTypeText, Text: bigText}},
 			}, nil
 		})
 		res, _ := h(context.Background(), mcp.CallToolRequest{})
