@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added MCP tool annotations (`readOnlyHint`, `openWorldHint`) to all tools to help clients and users assess tool behavior ([#36355](https://github.com/giantswarm/giantswarm/issues/36355)).
 - Enable JSON-Schema input validation for every tool (per [SEP-1303](https://modelcontextprotocol.io/seps/1303-input-validation-errors-as-tool-execution-errors)). Calls with unknown property names, wrong types, or missing required fields now return a structured tool execution error instead of being silently dropped, so the model can self-correct ([#36458](https://github.com/giantswarm/giantswarm/issues/36458)).
+- Adopt `github.com/giantswarm/mcp-toolkit` v0.1.0 for cross-cutting plumbing. `cmd/serve.go` now imports `logging.New`, `tracing.Init`, `health.New`, `httpx.Run`, `responsecap.New`, and `timeout.New`. The bespoke `internal/observability/{health,otel,server}.go` files are deleted; `internal/observability/` retains the project-specific Prometheus metrics + Instrumentor.
+- `serviceName` is now an ldflags-injectable `var` in `cmd/serve.go` (default `"mcp-prometheus"`) — same pattern as mcp-template, so rebrands / fork flavors flip a build flag instead of patching source.
+
+### Changed
+
+- **Breaking (LLM-visible)**: oversized tool results now return a typed JSON `response_too_large` error with `IsError = true` instead of silently truncating with appended advice prose. The toolkit explicitly considers truncation a foot-gun (a syntactically-valid prefix produces silent wrong answers); rejection forces the LLM to retry with a narrower query. The per-tool advice (PromQL hints, discovery hints, alerts hints, bulk hints) carries over via `responsecap.Options.Hint`. The `"unlimited": "true"` bypass on `execute_query` / `execute_range_query` is preserved via `responsecap.Options.AllowOverride` and continues to be ignored on bulk tools that lack a narrower API.
+- Per-tool-call timeout middleware (30 s default) is now wired on every tool from `mcp-toolkit/middleware/timeout` so a hung Prometheus / Mimir upstream returns a typed `IsError` result instead of stalling the worker indefinitely.
+- Logger format auto-selects JSON in-cluster (KUBERNETES_SERVICE_HOST set) and text outside, via the toolkit's `logging.New`. Same default behaviour as before, just centralised.
+
+### Removed
+
+- `internal/observability/health.go`, `internal/observability/otel.go`, `internal/observability/server.go` — superseded by the toolkit's `health`, `tracing`, and `httpx` packages.
 
 ## [0.1.0] - 2026-03-30
 
