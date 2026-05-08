@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,14 +13,32 @@ import (
 	"time"
 
 	mcpoauth "github.com/giantswarm/mcp-oauth"
+	"github.com/giantswarm/mcp-toolkit/health"
+	"github.com/giantswarm/mcp-toolkit/httpx"
+	"github.com/giantswarm/mcp-toolkit/logging"
+	"github.com/giantswarm/mcp-toolkit/middleware/responsecap"
+	"github.com/giantswarm/mcp-toolkit/middleware/timeout"
+	"github.com/giantswarm/mcp-toolkit/tracing"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/giantswarm/mcp-prometheus/internal/oauth"
 	"github.com/giantswarm/mcp-prometheus/internal/observability"
 	"github.com/giantswarm/mcp-prometheus/internal/server"
 	"github.com/giantswarm/mcp-prometheus/internal/tenancy"
 	"github.com/giantswarm/mcp-prometheus/internal/tools/prometheus"
+)
+
+// serviceName is the OTEL service.name and the MCP server identifier.
+// Override at build time via -ldflags "-X github.com/giantswarm/mcp-prometheus/cmd.serviceName=...".
+var serviceName = "mcp-prometheus"
+
+const (
+	transportStdio          = "stdio"
+	transportSSE            = "sse"
+	transportStreamableHTTP = "streamable-http"
 )
 
 // newServeCmd creates the Cobra command for starting the MCP server.
@@ -87,19 +104,17 @@ they can be provided as parameters to individual tool calls.`,
 		},
 	}
 
-	// Add flags for configuring the server
 	cmd.Flags().BoolVar(&debugMode, "debug", false, "Enable debug logging (default: false)")
 	cmd.Flags().BoolVar(&enableOAuth, "enable-oauth", false, "Enable OAuth 2.1 authentication (requires MCP_OAUTH_* and DEX_* env vars; sse/streamable-http only)")
 
-	// Transport flags
-	cmd.Flags().StringVar(&transport, "transport", "stdio", "Transport type: stdio, sse, or streamable-http")
+	cmd.Flags().StringVar(&transport, "transport", transportStdio,
+		fmt.Sprintf("Transport type: %s, %s, or %s", transportStdio, transportSSE, transportStreamableHTTP))
 	cmd.Flags().StringVar(&httpAddr, "http-addr", ":8080", "HTTP server address (for sse and streamable-http transports)")
 	cmd.Flags().StringVar(&sseEndpoint, "sse-endpoint", "/sse", "SSE endpoint path (for sse transport)")
 	cmd.Flags().StringVar(&messageEndpoint, "message-endpoint", "/message", "Message endpoint path (for sse transport)")
 	cmd.Flags().StringVar(&httpEndpoint, "http-endpoint", "/mcp", "HTTP endpoint path (for streamable-http transport)")
 	cmd.Flags().StringVar(&metricsAddr, "metrics-addr", ":9091", "Address for the observability HTTP server (/metrics, /healthz, /readyz). Set to empty string to disable.")
 
-	// Tenancy flags (only relevant when --enable-oauth is set)
 	cmd.Flags().StringVar(&tenancyMode, "tenancy-mode", string(tenancy.ModeGrafanaOrganization),
 		"Tenancy resolution mode when OAuth is enabled: grafana-organization or static")
 	cmd.Flags().StringVar(&staticTenants, "static-tenants", "",
@@ -113,27 +128,35 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 	httpAddr, sseEndpoint, messageEndpoint, httpEndpoint string,
 	metricsAddr string, tenancyMode string, staticTenants string) error {
 
-	// Create the unified structured logger.
 	logLevel := slog.LevelInfo
 	if debugMode {
 		logLevel = slog.LevelDebug
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
+	logger := logging.New(logging.Options{Level: logLevel})
 
-	// Setup graceful shutdown - listen for both SIGINT and SIGTERM
 	shutdownCtx, cancel := signal.NotifyContext(context.Background(),
 		os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// Collect server context options; OAuth may append more below.
+	// Best-effort OTEL tracing. No-op when no OTLP endpoint is configured.
+	shutdownOTEL, err := tracing.Init(shutdownCtx, serviceName, rootCmd.Version)
+	if err != nil {
+		logger.Warn("otel init failed; continuing without tracing", "error", err)
+	} else {
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = shutdownOTEL(ctx)
+		}()
+	}
+
 	serverOpts := []server.ServerOption{
 		server.WithSlogLogger(logger),
 	}
 
-	// OAuth 2.1 setup (SSE and streamable-http transports only).
 	var oauthHandler *mcpoauth.Handler
 	if enableOAuth {
-		if transport == "stdio" {
+		if transport == transportStdio {
 			return fmt.Errorf("--enable-oauth is not supported with stdio transport")
 		}
 
@@ -145,7 +168,6 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 		defer cleanup()
 		oauthHandler = h
 
-		// Parse static group map from env: JSON object of group → [tenant IDs].
 		var groupMap map[string][]string
 		if raw := os.Getenv("TENANCY_STATIC_GROUP_MAP"); raw != "" {
 			if err := json.Unmarshal([]byte(raw), &groupMap); err != nil {
@@ -170,7 +192,6 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 		logger.Info("OAuth 2.1 authentication enabled", "tenancy_mode", tenancyMode)
 	}
 
-	// Create server context
 	serverContext, err := server.NewServerContext(shutdownCtx, serverOpts...)
 	if err != nil {
 		return fmt.Errorf("failed to create server context: %w", err)
@@ -181,7 +202,6 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 		}
 	}()
 
-	// Log configuration
 	config := serverContext.PrometheusConfig()
 	authMethod := "none"
 	if config.Username != "" && config.Password != "" {
@@ -195,65 +215,72 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 		"org_id", config.OrgID,
 	)
 
-	// Initialise observability (metrics + tracing)
 	metrics := observability.NewMetrics()
-	health := &observability.Health{}
+	hc := health.New()
 
-	tp, shutdownTracer, err := observability.NewTracerProvider(shutdownCtx, logger)
-	if err != nil {
-		return fmt.Errorf("failed to initialise OTel tracer: %w", err)
-	}
-	defer func() {
-		if err := shutdownTracer(context.Background()); err != nil {
-			logger.Error("Error flushing OTel spans", "error", err)
-		}
-	}()
+	inst := observability.NewInstrumentor(metrics, otelTracerProvider())
 
-	inst := observability.NewInstrumentor(metrics, tp)
-
-	// Start observability HTTP server (/metrics, /healthz, /readyz) unless disabled.
-	// Listen is called synchronously so a port-conflict error fails startup immediately.
+	// Observability HTTP server (/metrics, /healthz, /readyz). Disabled when
+	// metricsAddr is empty (e.g. tests, stdio CLI use). Bind happens in a
+	// goroutine — port-conflict errors propagate via the shutdown ctx.
 	if metricsAddr != "" {
-		mux := observability.NewServer(metrics, health)
-		ln, err := observability.Listen(metricsAddr)
-		if err != nil {
-			return fmt.Errorf("failed to bind observability server: %w", err)
+		obsMux := http.NewServeMux()
+		obsMux.Handle("/metrics", metrics.Handler())
+		hc.Mount(obsMux)
+		obsServer := &http.Server{
+			Addr:              metricsAddr,
+			Handler:           obsMux,
+			ReadHeaderTimeout: 5 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       60 * time.Second,
 		}
 		logger.Info("Observability server listening", "addr", metricsAddr)
 		go func() {
-			if err := observability.Serve(shutdownCtx, ln, mux); err != nil {
+			if err := httpx.Run(shutdownCtx, obsServer, 5*time.Second); err != nil {
 				logger.Error("Observability server stopped", "error", err)
+				cancel()
 			}
 		}()
 	}
 
-	// Create MCP server
-	mcpSrv := mcpserver.NewMCPServer("mcp-prometheus", rootCmd.Version,
+	mcpSrv := mcpserver.NewMCPServer(serviceName, rootCmd.Version,
 		mcpserver.WithToolCapabilities(true),
 		mcpserver.WithInputSchemaValidation(),
+		mcpserver.WithToolHandlerMiddleware(timeout.New(30*time.Second)),
+		mcpserver.WithToolHandlerMiddleware(responsecap.New(responsecap.Options{
+			Limit:         prometheus.MaxResultLength,
+			Exempt:        prometheus.IsExempt,
+			AllowOverride: prometheus.IsBypass,
+			Hint:          prometheus.HintFor,
+		})),
 	)
 
-	// Register Prometheus tools with observability instrumentation
 	if err := prometheus.RegisterPrometheusTools(mcpSrv, serverContext, inst.Wrap); err != nil {
 		return fmt.Errorf("failed to register Prometheus tools: %w", err)
 	}
 
-	// Mark server as ready after all tools are registered
-	health.SetReady(true)
+	hc.SetReady(true)
 
 	logger.Info("Starting MCP Prometheus server", "transport", transport)
 
-	// Start the appropriate server based on transport type
 	switch transport {
-	case "stdio":
+	case transportStdio:
 		return runStdioServer(mcpSrv, logger)
-	case "sse":
+	case transportSSE:
 		return runSSEServer(mcpSrv, httpAddr, sseEndpoint, messageEndpoint, shutdownCtx, logger, oauthHandler)
-	case "streamable-http":
+	case transportStreamableHTTP:
 		return runStreamableHTTPServer(mcpSrv, httpAddr, httpEndpoint, shutdownCtx, logger, oauthHandler)
 	default:
-		return fmt.Errorf("unsupported transport type: %s (supported: stdio, sse, streamable-http)", transport)
+		return fmt.Errorf("unsupported transport type: %s (supported: %s, %s, %s)",
+			transport, transportStdio, transportSSE, transportStreamableHTTP)
 	}
+}
+
+// otelTracerProvider returns the global OTel TracerProvider. The toolkit's
+// tracing.Init has either installed a real provider or left the noop default
+// in place; either way otel.GetTracerProvider() returns the right thing.
+func otelTracerProvider() trace.TracerProvider {
+	return otel.GetTracerProvider()
 }
 
 // parseTenants splits a comma-separated tenant string into a trimmed, non-empty slice.
@@ -269,40 +296,6 @@ func parseTenants(s string) []string {
 		}
 	}
 	return result
-}
-
-// serveHTTPWithShutdown binds a TCP listener, serves with the given handler, and
-// shuts down gracefully when ctx is cancelled.
-func serveHTTPWithShutdown(ctx context.Context, addr string, handler http.Handler) error {
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("listen %s: %w", addr, err)
-	}
-
-	srv := &http.Server{
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-
-	errCh := make(chan error, 1)
-	go func() {
-		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-			errCh <- err
-		}
-		close(errCh)
-	}()
-
-	select {
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("shutdown: %w", err)
-		}
-		return nil
-	case err := <-errCh:
-		return err
-	}
 }
 
 // registerOAuthRoutes mounts all OAuth 2.1 endpoints onto mux and wraps each
@@ -322,21 +315,9 @@ func registerOAuthRoutes(mux *http.ServeMux, h *mcpoauth.Handler, mcpPath string
 
 // runStdioServer runs the server with STDIO transport
 func runStdioServer(mcpSrv *mcpserver.MCPServer, logger *slog.Logger) error {
-	// Start the server in a goroutine so we can handle shutdown signals
-	serverDone := make(chan error, 1)
-	go func() {
-		defer close(serverDone)
-		if err := mcpserver.ServeStdio(mcpSrv); err != nil {
-			serverDone <- err
-		}
-	}()
-
-	// Wait for server completion
-	if err := <-serverDone; err != nil {
+	if err := mcpserver.ServeStdio(mcpSrv); err != nil {
 		return fmt.Errorf("server stopped with error: %w", err)
 	}
-	logger.Info("Server stopped normally")
-
 	logger.Info("Server gracefully stopped")
 	return nil
 }
@@ -354,42 +335,24 @@ func runSSEServer(mcpSrv *mcpserver.MCPServer, addr, sseEndpoint, messageEndpoin
 
 	logger.Info("SSE server starting", "addr", addr, "sse_endpoint", sseEndpoint, "message_endpoint", messageEndpoint)
 
+	mux := http.NewServeMux()
 	if oauthHandler != nil {
-		// OAuth path: custom mux with protected MCP routes.
-		mux := http.NewServeMux()
 		registerOAuthRoutes(mux, oauthHandler, sseEndpoint, map[string]http.Handler{
 			sseEndpoint:     sseServer.SSEHandler(),
 			messageEndpoint: sseServer.MessageHandler(),
 		})
 		logger.Info("OAuth 2.1 endpoints mounted", "path", "/oauth/*")
-		return serveHTTPWithShutdown(ctx, addr, mux)
+	} else {
+		mux.Handle(sseEndpoint, sseServer)
+		mux.Handle(messageEndpoint, sseServer)
 	}
 
-	// No OAuth: use the SSE server's built-in Start/Shutdown lifecycle.
-	serverDone := make(chan error, 1)
-	go func() {
-		defer close(serverDone)
-		if err := sseServer.Start(addr); err != nil {
-			serverDone <- err
-		}
-	}()
-
-	select {
-	case <-ctx.Done():
-		logger.Info("Shutdown signal received, stopping SSE server")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := sseServer.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("error shutting down SSE server: %w", err)
-		}
-	case err := <-serverDone:
-		if err != nil {
-			return fmt.Errorf("SSE server stopped with error: %w", err)
-		}
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
-
-	logger.Info("SSE server gracefully stopped")
-	return nil
+	return httpx.Run(ctx, srv, 30*time.Second)
 }
 
 // runStreamableHTTPServer runs the server with Streamable HTTP transport.
@@ -401,39 +364,20 @@ func runStreamableHTTPServer(mcpSrv *mcpserver.MCPServer, addr, endpoint string,
 
 	logger.Info("Streamable HTTP server starting", "addr", addr, "endpoint", endpoint)
 
+	mux := http.NewServeMux()
 	if oauthHandler != nil {
-		// OAuth path: custom mux with protected MCP route.
-		mux := http.NewServeMux()
 		registerOAuthRoutes(mux, oauthHandler, endpoint, map[string]http.Handler{
 			endpoint: httpServer,
 		})
 		logger.Info("OAuth 2.1 endpoints mounted", "path", "/oauth/*")
-		return serveHTTPWithShutdown(ctx, addr, mux)
+	} else {
+		mux.Handle(endpoint, httpServer)
 	}
 
-	// No OAuth: use the streamable HTTP server's built-in lifecycle.
-	serverDone := make(chan error, 1)
-	go func() {
-		defer close(serverDone)
-		if err := httpServer.Start(addr); err != nil {
-			serverDone <- err
-		}
-	}()
-
-	select {
-	case <-ctx.Done():
-		logger.Info("Shutdown signal received, stopping HTTP server")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := httpServer.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("error shutting down HTTP server: %w", err)
-		}
-	case err := <-serverDone:
-		if err != nil {
-			return fmt.Errorf("HTTP server stopped with error: %w", err)
-		}
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
-
-	logger.Info("HTTP server gracefully stopped")
-	return nil
+	return httpx.Run(ctx, srv, 30*time.Second)
 }

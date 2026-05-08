@@ -1,14 +1,12 @@
-// Package observability provides Prometheus metrics, OpenTelemetry tracing,
-// health/readiness probes, and the HTTP server that exposes them for the
-// mcp-prometheus process.
+// Package observability provides the Prometheus metrics + OTel-instrumented
+// tool middleware specific to mcp-prometheus.
 //
-// The main entry points are:
+// Cross-cutting plumbing — slog factory, OTel tracer init, /healthz +
+// /readyz handlers, graceful HTTP shutdown — is imported from
+// github.com/giantswarm/mcp-toolkit and wired in cmd/serve.go. This package
+// owns only the bits that are shaped by mcp-prometheus's specific needs:
 //
-//   - [NewMetrics] — creates a custom Prometheus registry with per-tool counters
-//     and duration histograms.
-//   - [NewTracerProvider] — returns a no-op TracerProvider by default; switches to
-//     OTLP HTTP export when OTEL_EXPORTER_OTLP_ENDPOINT is set.
-//   - [NewInstrumentor] — wraps MCP tool handlers to record spans and metrics.
-//   - [Health] — tracks readiness state; exposes /healthz and /readyz handlers.
-//   - [NewServer] / [RunServer] — build and run the observability HTTP mux.
+//   - [NewMetrics] — Prometheus registry with per-tool counters and duration
+//     histograms (mcp_prometheus_tool_calls_total, mcp_prometheus_tool_call_duration_seconds).
+//   - [NewInstrumentor] — wraps each tool handler to record spans + metrics.
 package observability
