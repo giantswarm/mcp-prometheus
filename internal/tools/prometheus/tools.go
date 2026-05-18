@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	mcpoauth "github.com/giantswarm/mcp-oauth"
+	"github.com/giantswarm/mcp-oauth/handler"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
@@ -445,7 +445,7 @@ func resolveTenantOrgID(ctx context.Context, sc *server.ServerContext, explicit 
 		return explicit, nil
 	}
 
-	userInfo, ok := mcpoauth.UserInfoFromContext(ctx)
+	userInfo, ok := handler.UserInfoFromContext(ctx)
 	if !ok {
 		return "", fmt.Errorf("tenancy: no user info in context; token validation may have been skipped")
 	}

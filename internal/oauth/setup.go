@@ -11,6 +11,7 @@ import (
 	"time"
 
 	mcpoauth "github.com/giantswarm/mcp-oauth"
+	"github.com/giantswarm/mcp-oauth/handler"
 	"github.com/giantswarm/mcp-oauth/providers"
 	"github.com/giantswarm/mcp-oauth/providers/dex"
 	mcpoidc "github.com/giantswarm/mcp-oauth/providers/oidc"
@@ -118,7 +119,7 @@ func ConfigFromEnv() Config {
 // NewHandler initialises the mcp-oauth Handler from the given Config.
 // It returns the handler and a cleanup function that must be called on shutdown
 // to flush and close the storage backend.
-func NewHandler(ctx context.Context, cfg Config, logger *slog.Logger) (*mcpoauth.Handler, func(), error) {
+func NewHandler(ctx context.Context, cfg Config, logger *slog.Logger) (*handler.Handler, func(), error) {
 	if cfg.Issuer == "" {
 		return nil, nil, fmt.Errorf("oauth: MCP_OAUTH_ISSUER must be set")
 	}
@@ -155,7 +156,7 @@ func NewHandler(ctx context.Context, cfg Config, logger *slog.Logger) (*mcpoauth
 // newHandlerWithProvider wires a pre-built provider into the mcp-oauth server.
 // It is separated from NewHandler so that tests can inject a mock provider
 // without requiring a live Dex instance.
-func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cfg Config, logger *slog.Logger) (*mcpoauth.Handler, func(), error) {
+func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cfg Config, logger *slog.Logger) (*handler.Handler, func(), error) {
 	store, cleanup, err := newStore(ctx, cfg, logger)
 	if err != nil {
 		return nil, nil, err
@@ -168,12 +169,7 @@ func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cf
 		TrustedAudiences:              cfg.TrustedAudiences,
 	}
 
-	srv, err := mcpoauth.NewServer(provider, store, store, store, serverCfg, logger)
-	if err != nil {
-		cleanup()
-		return nil, nil, fmt.Errorf("oauth: create server: %w", err)
-	}
-
+	var opts []mcpoauth.ServerOption
 	if cfg.EncryptionKey != "" {
 		keyBytes, err := base64.StdEncoding.DecodeString(cfg.EncryptionKey)
 		if err != nil {
@@ -185,15 +181,20 @@ func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cf
 			cleanup()
 			return nil, nil, fmt.Errorf("oauth: create encryptor: %w", err)
 		}
-		srv.SetEncryptor(enc)
+		opts = append(opts, mcpoauth.WithEncryptor(enc))
 	} else {
 		logger.Warn("MCP_OAUTH_ENCRYPTION_KEY is not set — OAuth tokens will be stored unencrypted. " +
 			"Set MCP_OAUTH_ENCRYPTION_KEY to a 64-hex-char AES-256 key for production use. " +
 			"Generate one with: openssl rand -hex 32")
 	}
 
-	handler := mcpoauth.NewHandler(srv, logger)
-	return handler, cleanup, nil
+	srv, err := mcpoauth.NewServer(provider, store, store, store, serverCfg, logger, opts...)
+	if err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("oauth: create server: %w", err)
+	}
+
+	return handler.New(srv, logger), cleanup, nil
 }
 
 // combinedStore is the set of store interfaces that a single backing store must
