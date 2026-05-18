@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	mcpoauth "github.com/giantswarm/mcp-oauth"
+	"github.com/giantswarm/mcp-oauth/handler"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 
@@ -131,7 +131,7 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 	}
 
 	// OAuth 2.1 setup (SSE and streamable-http transports only).
-	var oauthHandler *mcpoauth.Handler
+	var oauthHandler *handler.Handler
 	if enableOAuth {
 		if transport == "stdio" {
 			return fmt.Errorf("--enable-oauth is not supported with stdio transport")
@@ -307,7 +307,7 @@ func serveHTTPWithShutdown(ctx context.Context, addr string, handler http.Handle
 
 // registerOAuthRoutes mounts all OAuth 2.1 endpoints onto mux and wraps each
 // MCP handler with ValidateToken middleware.
-func registerOAuthRoutes(mux *http.ServeMux, h *mcpoauth.Handler, mcpPath string, mcpHandlers map[string]http.Handler) {
+func registerOAuthRoutes(mux *http.ServeMux, h *handler.Handler, mcpPath string, mcpHandlers map[string]http.Handler) {
 	h.RegisterAuthorizationServerMetadataRoutes(mux)
 	h.RegisterProtectedResourceMetadataRoutes(mux, mcpPath)
 	mux.HandleFunc("/oauth/authorize", h.ServeAuthorization)
@@ -344,7 +344,7 @@ func runStdioServer(mcpSrv *mcpserver.MCPServer, logger *slog.Logger) error {
 // runSSEServer runs the server with SSE transport.
 // When oauthHandler is non-nil, a custom HTTP mux is built with OAuth 2.1
 // endpoints and the SSE/message paths are protected with ValidateToken.
-func runSSEServer(mcpSrv *mcpserver.MCPServer, addr, sseEndpoint, messageEndpoint string, ctx context.Context, logger *slog.Logger, oauthHandler *mcpoauth.Handler) error {
+func runSSEServer(mcpSrv *mcpserver.MCPServer, addr, sseEndpoint, messageEndpoint string, ctx context.Context, logger *slog.Logger, oauthHandler *handler.Handler) error {
 	logger.Debug("SSE server configuration", "addr", addr, "sse_endpoint", sseEndpoint, "message_endpoint", messageEndpoint, "oauth", oauthHandler != nil)
 
 	sseServer := mcpserver.NewSSEServer(mcpSrv,
@@ -394,7 +394,7 @@ func runSSEServer(mcpSrv *mcpserver.MCPServer, addr, sseEndpoint, messageEndpoin
 
 // runStreamableHTTPServer runs the server with Streamable HTTP transport.
 // When oauthHandler is non-nil, MCP requests are protected with ValidateToken.
-func runStreamableHTTPServer(mcpSrv *mcpserver.MCPServer, addr, endpoint string, ctx context.Context, logger *slog.Logger, oauthHandler *mcpoauth.Handler) error {
+func runStreamableHTTPServer(mcpSrv *mcpserver.MCPServer, addr, endpoint string, ctx context.Context, logger *slog.Logger, oauthHandler *handler.Handler) error {
 	httpServer := mcpserver.NewStreamableHTTPServer(mcpSrv,
 		mcpserver.WithEndpointPath(endpoint),
 	)
