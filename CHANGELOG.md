@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Bump `giantswarm/architect` orb to `8.1.0` and migrate all three image pushes from the deprecated `push-to-registries-multiarch` job to `push-to-registries` with `multiarch: true`. Picks up the v8.1.0 QEMU/binfmt auto-registration, hardened buildx bootstrap, and standard OCI image labels.
+
 ### Added
 
 - Added MCP tool annotations (`readOnlyHint`, `openWorldHint`) to all tools to help clients and users assess tool behavior ([#36355](https://github.com/giantswarm/giantswarm/issues/36355)).
