@@ -1,6 +1,6 @@
 version: 2.1
 orbs:
-  architect: giantswarm/architect@8.2.1
+  architect: giantswarm/architect@8.2.2
 
 workflows:
   build:
@@ -58,7 +58,6 @@ workflows:
 
     - architect/push-to-app-catalog:
         executor: app-build-suite
-        sign: false
         context: architect
         name: build-mcp-prometheus-chart
         app_catalog: giantswarm-catalog
@@ -90,7 +89,6 @@ workflows:
     # Branch: push chart after tests + amd64 image
     - architect/push-to-app-catalog:
         executor: app-build-suite
-        sign: false
         context: architect
         name: push-mcp-prometheus-to-giantswarm-app-catalog
         app_catalog: giantswarm-catalog
@@ -109,7 +107,6 @@ workflows:
     # the in-China Aliyun mirror is slow or fails.
     - architect/push-to-app-catalog:
         executor: app-build-suite
-        sign: false
         context: architect
         name: push-mcp-prometheus-to-giantswarm-app-catalog-release
         app_catalog: giantswarm-catalog
