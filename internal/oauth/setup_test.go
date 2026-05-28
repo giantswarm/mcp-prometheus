@@ -144,7 +144,7 @@ func TestNewHandlerMissingRedirectURL(t *testing.T) {
 // --- newStore (package-internal) ---
 
 func TestNewStoreMemory(t *testing.T) {
-	store, cleanup, err := newStore(context.Background(), Config{StorageType: ""}, slog.Default())
+	store, cleanup, err := newStore(context.Background(), Config{StorageType: ""}, slog.Default(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error creating memory store: %v", err)
 	}
@@ -158,14 +158,14 @@ func TestNewStoreMemory(t *testing.T) {
 }
 
 func TestNewStoreValkeyMissingURL(t *testing.T) {
-	_, _, err := newStore(context.Background(), Config{StorageType: storageTypeValkey, ValkeyURL: ""}, slog.Default())
+	_, _, err := newStore(context.Background(), Config{StorageType: storageTypeValkey, ValkeyURL: ""}, slog.Default(), nil)
 	if err == nil {
 		t.Error("expected error when VALKEY_URL is empty with valkey storage type")
 	}
 }
 
 func TestNewValkeyStoreMissingURL(t *testing.T) {
-	_, _, err := newValkeyStore(Config{ValkeyURL: ""})
+	_, _, err := newValkeyStore(Config{ValkeyURL: ""}, nil)
 	if err == nil {
 		t.Error("expected error for empty ValkeyURL")
 	}
@@ -178,7 +178,7 @@ func TestNewValkeyStoreTLSBranch(t *testing.T) {
 	_, _, err := newValkeyStore(Config{
 		ValkeyURL: "127.0.0.1:1",
 		ValkeyTLS: true,
-	})
+	}, nil)
 	// Any outcome (success or error) is fine; we just guard against panics.
 	_ = err
 }
@@ -190,7 +190,7 @@ func TestNewValkeyStoreKeyPrefixBranch(t *testing.T) {
 	_, _, err := newValkeyStore(Config{
 		ValkeyURL:       "127.0.0.1:1",
 		ValkeyKeyPrefix: "test:",
-	})
+	}, nil)
 	_ = err
 }
 
