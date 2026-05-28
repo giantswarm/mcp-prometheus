@@ -157,7 +157,12 @@ func NewHandler(ctx context.Context, cfg Config, logger *slog.Logger) (*handler.
 // It is separated from NewHandler so that tests can inject a mock provider
 // without requiring a live Dex instance.
 func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cfg Config, logger *slog.Logger) (*handler.Handler, func(), error) {
-	store, cleanup, err := newStore(ctx, cfg, logger)
+	enc, err := buildEncryptor(cfg, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	store, cleanup, err := newStore(ctx, cfg, logger, enc)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -169,32 +174,34 @@ func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cf
 		TrustedAudiences:              cfg.TrustedAudiences,
 	}
 
-	var opts []mcpoauth.ServerOption
-	if cfg.EncryptionKey != "" {
-		keyBytes, err := base64.StdEncoding.DecodeString(cfg.EncryptionKey)
-		if err != nil {
-			cleanup()
-			return nil, nil, fmt.Errorf("oauth: decode MCP_OAUTH_ENCRYPTION_KEY (must be base64): %w", err)
-		}
-		enc, err := security.NewEncryptor(keyBytes)
-		if err != nil {
-			cleanup()
-			return nil, nil, fmt.Errorf("oauth: create encryptor: %w", err)
-		}
-		opts = append(opts, mcpoauth.WithEncryptor(enc))
-	} else {
-		logger.Warn("MCP_OAUTH_ENCRYPTION_KEY is not set — OAuth tokens will be stored unencrypted. " +
-			"Set MCP_OAUTH_ENCRYPTION_KEY to a 64-hex-char AES-256 key for production use. " +
-			"Generate one with: openssl rand -hex 32")
-	}
-
-	srv, err := mcpoauth.NewServer(provider, store, store, store, serverCfg, logger, opts...)
+	srv, err := mcpoauth.NewServer(provider, store, store, store, serverCfg, logger)
 	if err != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("oauth: create server: %w", err)
 	}
 
 	return handler.New(srv, logger), cleanup, nil
+}
+
+// buildEncryptor returns the storage-layer Encryptor configured by cfg.
+// Returns (nil, nil) when MCP_OAUTH_ENCRYPTION_KEY is unset; the store is
+// then constructed without encryption.
+func buildEncryptor(cfg Config, logger *slog.Logger) (*security.Encryptor, error) {
+	if cfg.EncryptionKey == "" {
+		logger.Warn("MCP_OAUTH_ENCRYPTION_KEY is not set — OAuth tokens will be stored unencrypted. " +
+			"Set MCP_OAUTH_ENCRYPTION_KEY to a 64-hex-char AES-256 key for production use. " +
+			"Generate one with: openssl rand -hex 32")
+		return nil, nil
+	}
+	keyBytes, err := base64.StdEncoding.DecodeString(cfg.EncryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("oauth: decode MCP_OAUTH_ENCRYPTION_KEY (must be base64): %w", err)
+	}
+	enc, err := security.NewEncryptor(keyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("oauth: create encryptor: %w", err)
+	}
+	return enc, nil
 }
 
 // combinedStore is the set of store interfaces that a single backing store must
@@ -206,17 +213,23 @@ type combinedStore interface {
 }
 
 // newStore creates the token storage backend based on cfg.StorageType.
-func newStore(_ context.Context, cfg Config, _ *slog.Logger) (combinedStore, func(), error) {
+// When enc is non-nil, the backend encrypts tokens at rest.
+func newStore(_ context.Context, cfg Config, _ *slog.Logger, enc *security.Encryptor) (combinedStore, func(), error) {
 	if cfg.StorageType == storageTypeValkey {
-		return newValkeyStore(cfg)
+		return newValkeyStore(cfg, enc)
 	}
 	// Default: in-process memory store (dev / single-replica).
-	s := memory.New()
+	var opts []memory.Option
+	if enc != nil {
+		opts = append(opts, memory.WithEncryptor(enc))
+	}
+	s := memory.New(opts...)
 	return s, s.Stop, nil
 }
 
 // newValkeyStore creates a production Valkey storage backend.
-func newValkeyStore(cfg Config) (combinedStore, func(), error) {
+// When enc is non-nil, tokens are encrypted at rest with AES-256-GCM.
+func newValkeyStore(cfg Config, enc *security.Encryptor) (combinedStore, func(), error) {
 	if cfg.ValkeyURL == "" {
 		return nil, nil, fmt.Errorf("oauth: VALKEY_URL must be set when OAUTH_STORAGE=valkey")
 	}
@@ -232,7 +245,11 @@ func newValkeyStore(cfg Config) (combinedStore, func(), error) {
 		vcfg.TLS = &tls.Config{MinVersion: tls.VersionTLS12}
 	}
 
-	s, err := valkey.New(vcfg)
+	var opts []valkey.Option
+	if enc != nil {
+		opts = append(opts, valkey.WithEncryptor(enc))
+	}
+	s, err := valkey.New(vcfg, opts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("oauth: connect to Valkey at %s: %w", cfg.ValkeyURL, err)
 	}
