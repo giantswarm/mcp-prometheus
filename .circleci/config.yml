@@ -1,24 +1,24 @@
 version: 2.1
 orbs:
-  architect: giantswarm/architect@8.3.0
+  architect: giantswarm/architect@9.0.0
 
 workflows:
   build:
     jobs:
     - architect/go-build:
-        context: architect
         name: go-build-mcp-prometheus
         binary: mcp-prometheus
+        context: architect
         filters:
           tags:
             only: /^v.*/
 
-    # Branch builds: amd64 only for faster PR feedback
+    # Branch builds: multi-arch image to gsoci for PR validation. v9's
+    # push-to-registries always uses buildx and derives the platforms from
+    # go-build's .platforms file (linux/amd64,linux/arm64 by default).
     - architect/push-to-registries:
         context: architect
-        multiarch: true
         name: push-to-registries
-        platforms: "linux/amd64"
         requires:
         - go-build-mcp-prometheus
         filters:
@@ -31,7 +31,6 @@ workflows:
     # mechanism), so the buildx push no longer crosses the Pacific.
     - architect/push-to-registries:
         context: architect
-        multiarch: true
         name: push-to-registries-release
         split-china-push: true
         requires:
@@ -43,8 +42,8 @@ workflows:
             ignore: /.*/
 
     # Mirror gsoci -> Aliyun via the in-China giantswarm/galaxy-runner. Runs
-    # in parallel with the chart catalog push; an Aliyun mirror failure does
-    # NOT block the chart publish.
+    # in parallel with the chart catalog push; Aliyun mirror failures do NOT
+    # block the chart publish.
     - architect/sync-china-registry:
         context: architect
         name: sync-china-registry
@@ -86,7 +85,7 @@ workflows:
             ignore:
             - main
 
-    # Branch: push chart after tests + amd64 image
+    # Branch: push chart (git catalog + OCI per architect default) after tests + image
     - architect/push-to-app-catalog:
         executor: app-build-suite
         context: architect
