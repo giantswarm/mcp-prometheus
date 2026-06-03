@@ -20,8 +20,8 @@ github.com/frankban/quicktest v1.14.6 h1:7Xjx+VpznH+oBnejlPUj8oUpdxnVs4f8XU8WnHk
 github.com/frankban/quicktest v1.14.6/go.mod h1:4ptaffx2x8+WTWXmUCuVU6aPUX1/Mz7zb5vbUoiM6w0=
 github.com/fxamacker/cbor/v2 v2.9.0 h1:NpKPmjDBgUfBms6tr6JZkTHtfFGcMKsw3eGcmD/sapM=
 github.com/fxamacker/cbor/v2 v2.9.0/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
-github.com/giantswarm/mcp-oauth v0.2.184 h1:W38NcA0/2HbUIhiW5hdHXRvJY7x82xdX7wqffZhrSok=
-github.com/giantswarm/mcp-oauth v0.2.184/go.mod h1:X/8H2gi9TsoV6eQ4zWx2UzGfPyNlGK2hustIitR4zR8=
+github.com/giantswarm/mcp-oauth v0.2.185 h1:fMDUSDhh/Wm5acLfX11ttRVBAxI9h5oNwPHeGC09RGw=
+github.com/giantswarm/mcp-oauth v0.2.185/go.mod h1:X/8H2gi9TsoV6eQ4zWx2UzGfPyNlGK2hustIitR4zR8=
 github.com/go-jose/go-jose/v4 v4.1.4 h1:moDMcTHmvE6Groj34emNPLs/qtYXRVcd6S7NHbHz3kA=
 github.com/go-jose/go-jose/v4 v4.1.4/go.mod h1:x4oUasVrzR7071A4TnHLGSPpNOm2a21K9Kf04k1rs08=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
