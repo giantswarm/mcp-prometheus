@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.78](https://github.com/giantswarm/mcp-prometheus/compare/v0.1.77...v0.1.78) (2026-06-03)
+
+
+### Fixed
+
+* **deps:** update module github.com/prometheus/common to v0.68.1 ([#182](https://github.com/giantswarm/mcp-prometheus/issues/182)) ([5c54845](https://github.com/giantswarm/mcp-prometheus/commit/5c548459023a1e0dc16994f54112ad975f8ed177))
+
+
+### Changed
+
+* **deps:** update actions/checkout action to v6.0.3 ([#178](https://github.com/giantswarm/mcp-prometheus/issues/178)) ([23f1332](https://github.com/giantswarm/mcp-prometheus/commit/23f13320d519cb69a1056f67abd1aaa6c63e9bf3))
+* **deps:** update golang docker tag to v1.26.4 ([#179](https://github.com/giantswarm/mcp-prometheus/issues/179)) ([e0d6dce](https://github.com/giantswarm/mcp-prometheus/commit/e0d6dce2ccdf38a804b6ff73b6b32716ddf7a21b))
+* **main:** release 0.1.76 ([#183](https://github.com/giantswarm/mcp-prometheus/issues/183)) ([8b3c00a](https://github.com/giantswarm/mcp-prometheus/commit/8b3c00a043011b662a41d8bdc13acfadc6da4c33))
+* **main:** release 0.1.77 ([#184](https://github.com/giantswarm/mcp-prometheus/issues/184)) ([f556ea5](https://github.com/giantswarm/mcp-prometheus/commit/f556ea57502afb18959d7c0d7a0a85487eb8a10e))
+
 ## [0.1.77](https://github.com/giantswarm/mcp-prometheus/compare/v0.1.76...v0.1.77) (2026-06-03)
 
 
