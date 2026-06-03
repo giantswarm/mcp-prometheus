@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.76](https://github.com/giantswarm/mcp-prometheus/compare/v0.1.75...v0.1.76) (2026-06-03)
+
+
+### Changed
+
+* align files according to platform standards ([#175](https://github.com/giantswarm/mcp-prometheus/issues/175)) ([536d521](https://github.com/giantswarm/mcp-prometheus/commit/536d5215909a3ef6a4380b01a4894cac0e718dc0))
+* **deps:** update actions/checkout action to v6.0.3 ([#178](https://github.com/giantswarm/mcp-prometheus/issues/178)) ([23f1332](https://github.com/giantswarm/mcp-prometheus/commit/23f13320d519cb69a1056f67abd1aaa6c63e9bf3))
+* **main:** release 0.1.75 ([#180](https://github.com/giantswarm/mcp-prometheus/issues/180)) ([1fb26ab](https://github.com/giantswarm/mcp-prometheus/commit/1fb26ab3c55886aab2193c3ab5f565a56d414b16))
+
 ## [0.1.75](https://github.com/giantswarm/mcp-prometheus/compare/v0.1.74...v0.1.75) (2026-06-03)
 
 
