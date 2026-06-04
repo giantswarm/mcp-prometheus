@@ -1,0 +1,58 @@
+# git-cliff config — push-based release flow.
+#
+# Two jobs:
+#   1. Decide the next semver from conventional commits (--bump).
+#   2. Render the release notes posted on the GitHub Release (--latest).
+
+[bump]
+features_always_bump_minor = true
+breaking_always_bump_major = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+topo_order = false
+sort_commits = "oldest"
+
+commit_preprocessors = [
+  { pattern = '(?m) \(#\d+\)$', replace = "" },
+]
+
+commit_parsers = [
+  { message = "^feat",     group = "Added" },
+  { message = "^fix",      group = "Fixed" },
+  { message = "^refactor", group = "Changed" },
+  { message = "^perf",     group = "Changed" },
+  { message = "^docs",     group = "Changed" },
+  { message = "^chore",    group = "Changed" },
+  { message = "^test",     group = "Changed" },
+  { message = "^build",    group = "Changed" },
+  { message = "^ci",       group = "Changed" },
+  { message = "^security", group = "Security" },
+  { message = "^style",    skip = true },
+]
+
+[remote.github]
+owner = "giantswarm"
+repo = "mcp-prometheus"
+
+[changelog]
+header = ""
+body = """
+{% for group, commits in commits | group_by(attribute="group") -%}
+### {{ group }}
+
+{% for commit in commits -%}
+- {% if commit.scope %}*({{ commit.scope }})* {% endif %}\
+{% if commit.breaking %}[**breaking**] {% endif %}\
+{{ commit.message | split(pat="\n") | first | upper_first }}\
+{% if commit.remote.pr_number %} in [#{{ commit.remote.pr_number }}](https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}/pull/{{ commit.remote.pr_number }}){% endif %}\
+{% if commit.remote.username %} by [@{{ commit.remote.username }}](https://github.com/{{ commit.remote.username }}){% endif %}
+{% endfor %}
+{% endfor -%}
+{% if previous.version %}
+**Full Changelog**: https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}/compare/{{ previous.version }}...{{ version }}
+{% endif -%}
+"""
+trim = true
+footer = ""

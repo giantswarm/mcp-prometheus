@@ -35,19 +35,17 @@ jobs:
       - name: Run Checks (Lint & Test)
         run: make check
 
-      - name: Install GoReleaser
-        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
-        with:
-          # either 'goreleaser' (default) or 'goreleaser-pro'
-          distribution: goreleaser
-          version: latest
-          install-only: true
-
-      - name: Run Release Dry-Run
-        # Only run on PRs, not on direct pushes to main
+      - name: Install git-cliff
         if: github.event_name == 'pull_request'
-        run: make release-dry-run
-        env:
-          # GoReleaser needs a GITHUB_TOKEN even for dry runs
-          # to check API rate limits, etc.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: giantswarm/install-binary-action@5bef88f65012037dd836117c8d344b21bb559854  # v4.1.0
+        with:
+          binary: git-cliff
+          version: "2.13.1"
+          # yamllint disable-line rule:line-length
+          download_url: 'https://github.com/orhun/git-cliff/releases/download/v${version}/git-cliff-${version}-x86_64-unknown-linux-gnu.tar.gz'
+          tarball_binary_path: 'git-cliff-${version}/git-cliff'
+          smoke_test: '${binary} --version'
+
+      - name: Validate cliff.toml
+        if: github.event_name == 'pull_request'
+        run: git-cliff --unreleased --bump --context
