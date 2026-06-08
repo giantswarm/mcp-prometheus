@@ -110,3 +110,6 @@ bin/
 config.local.yaml
 config.local.yml
 config.local.json
+
+# graphify knowledge graph (regenerable, rebuilt by the post-commit hook)
+graphify-out/
