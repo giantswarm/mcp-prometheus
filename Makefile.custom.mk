@@ -4,7 +4,7 @@
 lint-yaml: ## Run YAML linter
 	@echo "Running YAML linter..."
 	@# Exclude zz_generated files
-	@yamllint .github/workflows/auto-release.yaml .github/workflows/ci.yaml
+	@yamllint .github/workflows/ci.yaml
 
 .PHONY: check
 check: lint-yaml ## Run YAML linter
