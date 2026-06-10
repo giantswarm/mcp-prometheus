@@ -1,5 +1,11 @@
-# image:
-#   tag: ""
+# Pin the smoke-test image to a released tag. The chart otherwise defaults
+# image.tag to .Chart.AppVersion, which the architect pipeline rewrites to a
+# wall-clock dev version computed independently by build-chart and
+# push-to-registries; the branch path is build+test only, so that dev image is
+# never pushed and the pod hangs in ImagePullBackOff. Pinning to a real
+# released image makes the smoke deploy pull a tag that always exists.
+image:
+  tag: "0.2.7"
 
 ciliumNetworkPolicy:
   enabled: false
