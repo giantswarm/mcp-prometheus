@@ -10,9 +10,11 @@ import (
 )
 
 const (
-	testSecret    = "secret"
-	testDexIssuer = "https://dex.example.com"
-	testMCPIssuer = "https://mcp.example.com"
+	testSecret          = "secret"
+	testDexIssuer       = "https://dex.example.com"
+	testMCPIssuer       = "https://mcp.example.com"
+	testMusterIssuer    = "https://muster.example.com"
+	testMusterJwksURL   = "https://muster.example.com/.well-known/jwks.json"
 )
 
 func TestConfigFromEnvDefaults(t *testing.T) {
@@ -259,10 +261,10 @@ func TestParseTrustedIssuersValid(t *testing.T) {
 		t.Fatalf("expected 1 issuer, got %d", len(issuers))
 	}
 	ti := issuers[0]
-	if ti.Issuer != "https://muster.example.com" {
+	if ti.Issuer != testMusterIssuer {
 		t.Errorf("Issuer: got %q", ti.Issuer)
 	}
-	if ti.JwksURL != "https://muster.example.com/.well-known/jwks.json" {
+	if ti.JwksURL != testMusterJwksURL {
 		t.Errorf("JwksURL: got %q", ti.JwksURL)
 	}
 	if len(ti.AllowedAudiences) != 1 || ti.AllowedAudiences[0] != "https://mcp-prometheus.example.com" {
@@ -322,7 +324,7 @@ func TestConfigFromEnvTrustedIssuers(t *testing.T) {
 	if len(cfg.TrustedIssuers) != 1 {
 		t.Fatalf("expected 1 trusted issuer, got %d", len(cfg.TrustedIssuers))
 	}
-	if cfg.TrustedIssuers[0].Issuer != "https://muster.example.com" {
+	if cfg.TrustedIssuers[0].Issuer != testMusterIssuer {
 		t.Errorf("Issuer: got %q", cfg.TrustedIssuers[0].Issuer)
 	}
 }
@@ -341,8 +343,8 @@ func TestNewHandlerWithProviderTrustedIssuers(t *testing.T) {
 		Issuer: testMCPIssuer,
 		TrustedIssuers: []mcpserver.TrustedIssuer{
 			{
-				Issuer:           "https://muster.example.com",
-				JwksURL:          "https://muster.example.com/.well-known/jwks.json",
+				Issuer:           testMusterIssuer,
+				JwksURL:          testMusterJwksURL,
 				AllowedAudiences: []string{testMCPIssuer},
 			},
 		},
