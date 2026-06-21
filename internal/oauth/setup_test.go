@@ -10,11 +10,11 @@ import (
 )
 
 const (
-	testSecret          = "secret"
-	testDexIssuer       = "https://dex.example.com"
-	testMCPIssuer       = "https://mcp.example.com"
-	testMusterIssuer    = "https://muster.example.com"
-	testMusterJwksURL   = "https://muster.example.com/.well-known/jwks.json"
+	testSecret        = "secret"
+	testDexIssuer     = "https://dex.example.com"
+	testMCPIssuer     = "https://mcp.example.com"
+	testMusterIssuer  = "https://muster.example.com"
+	testMusterJwksURL = "https://muster.example.com/.well-known/jwks.json"
 )
 
 func TestConfigFromEnvDefaults(t *testing.T) {
