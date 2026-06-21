@@ -137,7 +137,10 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 			return fmt.Errorf("--enable-oauth is not supported with stdio transport")
 		}
 
-		oauthCfg := oauth.ConfigFromEnv()
+		oauthCfg, err := oauth.ConfigFromEnv()
+		if err != nil {
+			return fmt.Errorf("failed to read OAuth configuration: %w", err)
+		}
 		h, cleanup, err := oauth.NewHandler(shutdownCtx, oauthCfg, logger)
 		if err != nil {
 			return fmt.Errorf("failed to initialise OAuth handler: %w", err)

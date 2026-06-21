@@ -294,5 +294,33 @@ func TestGrafanaOrgGVR(t *testing.T) {
 	}
 }
 
+// Groups carried by a muster-minted (trusted-issuer) token are connector-prefixed
+// per install (e.g. "customer:Panamax_User"). The resolver matches RBAC entries
+// verbatim, so a GrafanaOrganization must list the prefixed form, and the bare
+// (unprefixed) group must not grant access. This locks the prefixed-group flow
+// from a trusted-issuer Bearer JWT through to tenant resolution.
+func TestTenantsForGroupsConnectorPrefixed(t *testing.T) {
+	const prefixedGroup = "customer:Panamax_User"
+	org := grafanaOrg("customer-org", []string{prefixedGroup}, nil, nil, []string{tenantProdEU})
+	r := newTestResolver(org)
+
+	tenants, err := r.TenantsForGroups(context.Background(), []string{prefixedGroup})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tenants) != 1 || tenants[0] != tenantProdEU {
+		t.Fatalf("expected [%s] for prefixed group, got %v", tenantProdEU, tenants)
+	}
+
+	// The unprefixed group must not match the prefixed RBAC entry.
+	tenants, err = r.TenantsForGroups(context.Background(), []string{"Panamax_User"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tenants) != 0 {
+		t.Errorf("expected no tenants for unprefixed group, got %v", tenants)
+	}
+}
+
 // Suppress unused import (metav1 needed for ListOptions reference in resolver.go)
 var _ = metav1.ListOptions{}

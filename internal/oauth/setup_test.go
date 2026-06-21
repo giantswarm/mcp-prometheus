@@ -6,12 +6,15 @@ import (
 	"testing"
 
 	"github.com/giantswarm/mcp-oauth/providers/mock"
+	mcpserver "github.com/giantswarm/mcp-oauth/server"
 )
 
 const (
-	testSecret    = "secret"
-	testDexIssuer = "https://dex.example.com"
-	testMCPIssuer = "https://mcp.example.com"
+	testSecret        = "secret"
+	testDexIssuer     = "https://dex.example.com"
+	testMCPIssuer     = "https://mcp.example.com"
+	testMusterIssuer  = "https://muster.example.com"
+	testMusterJwksURL = "https://muster.example.com/.well-known/jwks.json"
 )
 
 func TestConfigFromEnvDefaults(t *testing.T) {
@@ -29,7 +32,10 @@ func TestConfigFromEnvDefaults(t *testing.T) {
 		t.Setenv(key, "")
 	}
 
-	cfg := ConfigFromEnv()
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if cfg.StorageType != "" {
 		t.Errorf("expected empty StorageType by default, got %q", cfg.StorageType)
@@ -59,7 +65,10 @@ func TestConfigFromEnvReadsValues(t *testing.T) {
 	t.Setenv("DEX_CLIENT_SECRET", "dexsecret")
 	t.Setenv("DEX_REDIRECT_URL", "https://app.example.com/oauth/callback")
 
-	cfg := ConfigFromEnv()
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	checks := []struct {
 		name string
@@ -93,7 +102,10 @@ func TestConfigFromEnvReadsValues(t *testing.T) {
 func TestConfigFromEnvAllowPrivateURLs(t *testing.T) {
 	t.Setenv("MCP_OAUTH_ALLOW_PRIVATE_URLS", "true")
 
-	cfg := ConfigFromEnv()
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if !cfg.AllowPrivateURLs {
 		t.Error("expected AllowPrivateURLs == true when MCP_OAUTH_ALLOW_PRIVATE_URLS=true")
 	}
@@ -223,5 +235,126 @@ func TestNewHandlerWithProviderShortEncryptionKey(t *testing.T) {
 	_, _, err := newHandlerWithProvider(context.Background(), p, cfg, slog.Default())
 	if err == nil {
 		t.Error("expected error for short (non-32-byte) encryption key")
+	}
+}
+
+// --- OAUTH_TRUSTED_ISSUERS parsing ---
+
+const testTrustedIssuersJSON = `[
+  {
+    "issuer": "https://muster.example.com",
+    "jwksURL": "https://muster.example.com/.well-known/jwks.json",
+    "allowedAudiences": ["https://mcp-prometheus.example.com"],
+    "allowedScopes": ["prometheus:read"],
+    "allowedClaims": {"sub": "*@giantswarm.io"},
+    "acceptedTypHeaders": ["at+jwt"],
+    "allowPrivateIPJWKS": true
+  }
+]`
+
+func TestParseTrustedIssuersValid(t *testing.T) {
+	issuers, err := parseTrustedIssuers(testTrustedIssuersJSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(issuers) != 1 {
+		t.Fatalf("expected 1 issuer, got %d", len(issuers))
+	}
+	ti := issuers[0]
+	if ti.Issuer != testMusterIssuer {
+		t.Errorf("Issuer: got %q", ti.Issuer)
+	}
+	if ti.JwksURL != testMusterJwksURL {
+		t.Errorf("JwksURL: got %q", ti.JwksURL)
+	}
+	if len(ti.AllowedAudiences) != 1 || ti.AllowedAudiences[0] != "https://mcp-prometheus.example.com" {
+		t.Errorf("AllowedAudiences: got %v", ti.AllowedAudiences)
+	}
+	if len(ti.AllowedScopes) != 1 || ti.AllowedScopes[0] != "prometheus:read" {
+		t.Errorf("AllowedScopes: got %v", ti.AllowedScopes)
+	}
+	if ti.AllowedClaims["sub"] != "*@giantswarm.io" {
+		t.Errorf("AllowedClaims[sub]: got %q", ti.AllowedClaims["sub"])
+	}
+	if len(ti.AcceptedTypHeaders) != 1 || ti.AcceptedTypHeaders[0] != "at+jwt" {
+		t.Errorf("AcceptedTypHeaders: got %v", ti.AcceptedTypHeaders)
+	}
+	if !ti.AllowPrivateIPJWKS {
+		t.Error("AllowPrivateIPJWKS: expected true")
+	}
+}
+
+func TestParseTrustedIssuersEmpty(t *testing.T) {
+	issuers, err := parseTrustedIssuers("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if issuers != nil {
+		t.Errorf("expected nil issuers for empty input, got %v", issuers)
+	}
+}
+
+func TestParseTrustedIssuersMalformed(t *testing.T) {
+	if _, err := parseTrustedIssuers("{not json"); err == nil {
+		t.Error("expected error for malformed JSON")
+	}
+}
+
+func TestParseTrustedIssuersMissingFields(t *testing.T) {
+	cases := map[string]string{
+		"missing issuer":  `[{"jwksURL": "https://muster.example.com/jwks"}]`,
+		"missing jwksURL": `[{"issuer": "https://muster.example.com"}]`,
+	}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseTrustedIssuers(raw); err == nil {
+				t.Errorf("expected error for %s", name)
+			}
+		})
+	}
+}
+
+func TestConfigFromEnvTrustedIssuers(t *testing.T) {
+	t.Setenv("OAUTH_TRUSTED_ISSUERS", testTrustedIssuersJSON)
+
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.TrustedIssuers) != 1 {
+		t.Fatalf("expected 1 trusted issuer, got %d", len(cfg.TrustedIssuers))
+	}
+	if cfg.TrustedIssuers[0].Issuer != testMusterIssuer {
+		t.Errorf("Issuer: got %q", cfg.TrustedIssuers[0].Issuer)
+	}
+}
+
+func TestConfigFromEnvTrustedIssuersInvalid(t *testing.T) {
+	t.Setenv("OAUTH_TRUSTED_ISSUERS", "{not json")
+
+	if _, err := ConfigFromEnv(); err == nil {
+		t.Error("expected error for malformed OAUTH_TRUSTED_ISSUERS")
+	}
+}
+
+func TestNewHandlerWithProviderTrustedIssuers(t *testing.T) {
+	p := mock.NewProvider()
+	cfg := Config{
+		Issuer: testMCPIssuer,
+		TrustedIssuers: []mcpserver.TrustedIssuer{
+			{
+				Issuer:           testMusterIssuer,
+				JwksURL:          testMusterJwksURL,
+				AllowedAudiences: []string{testMCPIssuer},
+			},
+		},
+	}
+	h, cleanup, err := newHandlerWithProvider(context.Background(), p, cfg, slog.Default())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer cleanup()
+	if h == nil {
+		t.Error("expected non-nil handler")
 	}
 }

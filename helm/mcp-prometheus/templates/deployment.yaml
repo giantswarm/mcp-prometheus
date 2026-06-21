@@ -144,6 +144,10 @@ spec:
             - name: OAUTH_TRUSTED_AUDIENCES
               value: {{ .Values.app.oauth.trustedAudiences | join "," | quote }}
             {{- end }}
+            {{- if .Values.app.oauth.trustedIssuers }}
+            - name: OAUTH_TRUSTED_ISSUERS
+              value: {{ .Values.app.oauth.trustedIssuers | toJson | quote }}
+            {{- end }}
             {{- end }}
             {{- if $hasStaticGroupMap }}
             - name: TENANCY_STATIC_GROUP_MAP
