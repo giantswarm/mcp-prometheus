@@ -102,6 +102,10 @@ type TrustedIssuerConfig struct {
 	AllowedClaims      map[string]string `json:"allowedClaims,omitempty"`
 	AcceptedTypHeaders []string          `json:"acceptedTypHeaders,omitempty"`
 	AllowPrivateIPJWKS bool              `json:"allowPrivateIPJWKS,omitempty"`
+	// AllowPrivateIPJWKSHosts scopes the private-IP JWKS exception to an explicit
+	// hostname allowlist, keeping SSRF protection for every other host. Prefer it
+	// over the blanket AllowPrivateIPJWKS flag.
+	AllowPrivateIPJWKSHosts []string `json:"allowPrivateIPJWKSHosts,omitempty"`
 }
 
 // parseTrustedIssuers decodes the OAUTH_TRUSTED_ISSUERS JSON array into
@@ -124,13 +128,14 @@ func parseTrustedIssuers(raw string) ([]mcpserver.TrustedIssuer, error) {
 			return nil, fmt.Errorf("OAUTH_TRUSTED_ISSUERS[%d] (%s): jwksURL is required", i, e.Issuer)
 		}
 		issuers = append(issuers, mcpserver.TrustedIssuer{
-			Issuer:             e.Issuer,
-			JwksURL:            e.JwksURL,
-			AllowedAudiences:   e.AllowedAudiences,
-			AllowedScopes:      e.AllowedScopes,
-			AllowedClaims:      e.AllowedClaims,
-			AcceptedTypHeaders: e.AcceptedTypHeaders,
-			AllowPrivateIPJWKS: e.AllowPrivateIPJWKS,
+			Issuer:                  e.Issuer,
+			JwksURL:                 e.JwksURL,
+			AllowedAudiences:        e.AllowedAudiences,
+			AllowedScopes:           e.AllowedScopes,
+			AllowedClaims:           e.AllowedClaims,
+			AcceptedTypHeaders:      e.AcceptedTypHeaders,
+			AllowPrivateIPJWKS:      e.AllowPrivateIPJWKS,
+			AllowPrivateIPJWKSHosts: e.AllowPrivateIPJWKSHosts,
 		})
 	}
 	return issuers, nil

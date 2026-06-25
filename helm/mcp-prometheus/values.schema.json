@@ -343,6 +343,13 @@
                   "allowPrivateIPJWKS": {
                     "type": "boolean",
                     "description": "Allow the JWKS host to resolve to a private/loopback IP. Disables SSRF protection for this issuer's JWKS fetch."
+                  },
+                  "allowPrivateIPJWKSHosts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Hostnames whose JWKS URL may resolve to a private/loopback IP. Scopes the private-IP exception to these hosts; every other host stays SSRF-protected. Prefer over allowPrivateIPJWKS."
                   }
                 }
               }

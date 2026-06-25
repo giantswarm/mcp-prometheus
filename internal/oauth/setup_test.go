@@ -284,6 +284,30 @@ func TestParseTrustedIssuersValid(t *testing.T) {
 	}
 }
 
+func TestParseTrustedIssuersPrivateIPJWKSHosts(t *testing.T) {
+	raw := `[
+  {
+    "issuer": "https://muster.example.com",
+    "jwksURL": "https://muster.example.com/.well-known/jwks.json",
+    "allowPrivateIPJWKSHosts": ["muster.example.com"]
+  }
+]`
+	issuers, err := parseTrustedIssuers(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(issuers) != 1 {
+		t.Fatalf("expected 1 issuer, got %d", len(issuers))
+	}
+	ti := issuers[0]
+	if ti.AllowPrivateIPJWKS {
+		t.Error("AllowPrivateIPJWKS: expected false")
+	}
+	if len(ti.AllowPrivateIPJWKSHosts) != 1 || ti.AllowPrivateIPJWKSHosts[0] != "muster.example.com" {
+		t.Errorf("AllowPrivateIPJWKSHosts: got %v", ti.AllowPrivateIPJWKSHosts)
+	}
+}
+
 func TestParseTrustedIssuersEmpty(t *testing.T) {
 	issuers, err := parseTrustedIssuers("")
 	if err != nil {

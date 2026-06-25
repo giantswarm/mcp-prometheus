@@ -209,7 +209,9 @@ app:
     #   allowedScopes:      cap on scopes accepted from this issuer (optional)
     #   allowedClaims:      map of claim → exact/glob pattern the token must match
     #   acceptedTypHeaders: accepted JWT `typ` headers (default ["at+jwt"])
-    #   allowPrivateIPJWKS: allow a private/loopback JWKS host (disables SSRF guard)
+    #   allowPrivateIPJWKS:      allow a private/loopback JWKS host (disables SSRF guard)
+    #   allowPrivateIPJWKSHosts: hostnames allowed to resolve to a private/loopback IP;
+    #                            scopes the exception per host, prefer over allowPrivateIPJWKS
     #
     # Example:
     #   - issuer: "https://muster.example.com"
