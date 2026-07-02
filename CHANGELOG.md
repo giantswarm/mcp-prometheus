@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+* Team ownership: team ownership aligned to the canonical `io.giantswarm.application.team: atlas` annotation (was key `application.giantswarm.io/team`, value `planeteers`).
+
 ### Added
 
 * `allowPrivateIPJWKSHosts` on `OAUTH_TRUSTED_ISSUERS` entries (and the `app.oauth.trustedIssuers` Helm values): a per-host allowlist for issuers whose JWKS URL resolves to a private/loopback IP, keeping SSRF protection on every other host. Prefer it over the blanket `allowPrivateIPJWKS` flag.
