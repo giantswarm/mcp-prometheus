@@ -19,4 +19,4 @@ maintainers:
     email: team-planeteers@giantswarm.io
 kubeVersion: ">=1.25.0-0"
 annotations:
-  application.giantswarm.io/team: planeteers
+  application.giantswarm.io/team: atlas
