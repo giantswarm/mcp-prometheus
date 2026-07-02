@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+* Use the canonical `io.giantswarm.application.team` annotation key for team ownership (value `atlas` unchanged).
+
 ### Fixed
 
 * Team ownership: `application.giantswarm.io/team` annotation set to `atlas` (was `planeteers`).
