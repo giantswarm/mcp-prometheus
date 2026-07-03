@@ -205,7 +205,9 @@ app:
     # Each entry maps to mcp-oauth's TrustedIssuer:
     #   issuer:             expected `iss` claim (required)
     #   jwksURL:            JWKS endpoint for signature verification (required)
-    #   allowedAudiences:   accepted `aud` values (this server's resource identifier)
+    #   allowedAudiences:   accepted `aud` values. With muster forwarding its issued
+    #                       token unchanged this is muster's own resource identifier,
+    #                       not a per-backend value.
     #   allowedScopes:      cap on scopes accepted from this issuer (optional)
     #   allowedClaims:      map of claim → exact/glob pattern the token must match
     #   acceptedTypHeaders: accepted JWT `typ` headers (default ["at+jwt"])
@@ -213,12 +215,11 @@ app:
     #   allowPrivateIPJWKSHosts: hostnames allowed to resolve to a private/loopback IP;
     #                            scopes the exception per host, prefer over allowPrivateIPJWKS
     #
-    # Example:
+    # Example (muster forwarding its issued token unchanged):
     #   - issuer: "https://muster.example.com"
-    #     jwksURL: "https://muster.example.com/.well-known/jwks.json"
-    #     allowedAudiences: ["https://mcp-prometheus.example.com"]
-    #     acceptedTypHeaders: ["at+jwt"]
-    #     allowPrivateIPJWKS: false
+    #     jwksURL: "http://muster.muster.svc.cluster.local:8080/.well-known/jwks.json"
+    #     allowedAudiences: ["https://muster.example.com/mcp"]
+    #     allowPrivateIPJWKSHosts: ["muster.muster.svc.cluster.local"]
     # Default: [] (no external issuers trusted)
     trustedIssuers: []
 
