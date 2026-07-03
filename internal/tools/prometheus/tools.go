@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/giantswarm/mcp-oauth/handler"
+	"github.com/giantswarm/mcp-oauth/providers"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
@@ -450,12 +451,34 @@ func resolveTenantOrgID(ctx context.Context, sc *server.ServerContext, explicit 
 		return "", fmt.Errorf("tenancy: no user info in context; token validation may have been skipped")
 	}
 
+	if userInfo.IsOBO() {
+		// Delegated (on-behalf-of) request: record the acting agent for audit.
+		// Authorization stays group-based on the human subject's claims.
+		sc.Logger().Info("Delegated request",
+			"issuer", userInfo.Issuer,
+			"subject", userInfo.ID,
+			"actor_subject", userInfo.ActorSubject,
+			"actor_issuer", userInfo.ActorIssuer,
+			"actor_chain", actorChainSubjects(userInfo),
+		)
+	}
+
 	tenants, err := resolver.TenantsForGroups(ctx, userInfo.Groups)
 	if err != nil {
 		return "", fmt.Errorf("tenancy: resolve tenants: %w", err)
 	}
 
 	return tenancy.SelectOrgID(tenants, explicit)
+}
+
+// actorChainSubjects flattens the RFC 8693 act delegation chain to its subject
+// values, ordered outermost (most recent actor) first.
+func actorChainSubjects(userInfo *providers.UserInfo) []string {
+	subjects := make([]string, 0, len(userInfo.ActorChain))
+	for _, actor := range userInfo.ActorChain {
+		subjects = append(subjects, actor.Subject)
+	}
+	return subjects
 }
 
 // createClientFromParams creates a Prometheus client from request parameters,

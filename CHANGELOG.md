@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 * `allowPrivateIPJWKSHosts` on `OAUTH_TRUSTED_ISSUERS` entries (and the `app.oauth.trustedIssuers` Helm values): a per-host allowlist for issuers whose JWKS URL resolves to a private/loopback IP, keeping SSRF protection on every other host. Prefer it over the blanket `allowPrivateIPJWKS` flag.
+* Delegated (on-behalf-of) requests are logged with the acting agent's subject, issuer, and full RFC 8693 `act` chain.
+
+### Changed
+
+* mcp-oauth updated to v1.x.
 
 ## [0.1.80](https://github.com/giantswarm/mcp-prometheus/compare/v0.1.79...v0.1.80) (2026-06-03)
 
