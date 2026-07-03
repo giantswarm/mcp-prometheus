@@ -13,6 +13,11 @@ import (
 	"github.com/giantswarm/mcp-prometheus/internal/server"
 )
 
+const (
+	testTenant       = "giantswarm"
+	testMusterIssuer = "https://muster.example.com"
+)
+
 type staticResolver struct {
 	tenants []string
 }
@@ -27,7 +32,7 @@ func newTenancyServerContext(t *testing.T, logBuffer *bytes.Buffer) *server.Serv
 	sc, err := server.NewServerContext(t.Context(),
 		server.WithSlogLogger(logger),
 		server.WithOAuthEnabled(true),
-		server.WithTenancyResolver(&staticResolver{tenants: []string{"giantswarm"}}),
+		server.WithTenancyResolver(&staticResolver{tenants: []string{testTenant}}),
 	)
 	if err != nil {
 		t.Fatalf("NewServerContext: %v", err)
@@ -41,14 +46,14 @@ func TestResolveTenantOrgIDLogsDelegatedRequest(t *testing.T) {
 
 	userInfo := &providers.UserInfo{
 		ID:           "quentin@example.com",
-		Issuer:       "https://muster.example.com",
+		Issuer:       testMusterIssuer,
 		Groups:       []string{"customer:giantswarm"},
 		TokenSource:  providers.TokenSourceTrustedIssuer,
 		ActorSubject: "system:serviceaccount:kagent:sre-agent",
-		ActorIssuer:  "https://muster.example.com",
+		ActorIssuer:  testMusterIssuer,
 		ActorChain: []oidc.ActorClaim{
-			{Issuer: "https://muster.example.com", Subject: "system:serviceaccount:kagent:sre-agent"},
-			{Issuer: "https://muster.example.com", Subject: "system:serviceaccount:kagent:planner-agent"},
+			{Issuer: testMusterIssuer, Subject: "system:serviceaccount:kagent:sre-agent"},
+			{Issuer: testMusterIssuer, Subject: "system:serviceaccount:kagent:planner-agent"},
 		},
 	}
 	ctx := handler.ContextWithUserInfo(t.Context(), userInfo)
@@ -57,8 +62,8 @@ func TestResolveTenantOrgIDLogsDelegatedRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveTenantOrgID: %v", err)
 	}
-	if orgID != "giantswarm" {
-		t.Errorf("orgID = %q, want %q", orgID, "giantswarm")
+	if orgID != testTenant {
+		t.Errorf("orgID = %q, want %q", orgID, testTenant)
 	}
 
 	logged := logBuffer.String()
@@ -82,7 +87,7 @@ func TestResolveTenantOrgIDNoDelegationLogForPlainToken(t *testing.T) {
 	// without a delegation log line.
 	userInfo := &providers.UserInfo{
 		ID:          "quentin@example.com",
-		Issuer:      "https://muster.example.com",
+		Issuer:      testMusterIssuer,
 		Groups:      []string{"customer:giantswarm"},
 		TokenSource: providers.TokenSourceTrustedIssuer,
 	}
@@ -92,8 +97,8 @@ func TestResolveTenantOrgIDNoDelegationLogForPlainToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveTenantOrgID: %v", err)
 	}
-	if orgID != "giantswarm" {
-		t.Errorf("orgID = %q, want %q", orgID, "giantswarm")
+	if orgID != testTenant {
+		t.Errorf("orgID = %q, want %q", orgID, testTenant)
 	}
 	if bytes.Contains(logBuffer.Bytes(), []byte("Delegated request")) {
 		t.Errorf("unexpected delegation log for a token without act: %s", logBuffer.String())
