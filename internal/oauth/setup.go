@@ -207,8 +207,10 @@ func NewHandler(ctx context.Context, cfg Config, logger *slog.Logger) (*handler.
 		// Inject an HTTP client that allows connections to private/internal IP
 		// ranges. Required when the Dex issuer URL is an internal DNS name that
 		// resolves to an RFC-1918 address (e.g. on a private management cluster).
-		// TLS verification is still enforced by this client.
-		dexCfg.HTTPClient = mcpoidc.NewPrivateIPAllowedHTTPClient(30 * time.Second)
+		// TLS verification is still enforced by this client. A nil CA pool
+		// selects the system trust store, matching the pre-v1 default (the Dex
+		// issuer here is expected to present a publicly-trusted certificate).
+		dexCfg.HTTPClient = mcpoidc.NewPrivateIPAllowedHTTPClient(30*time.Second, nil)
 	}
 	provider, err := dex.NewProvider(dexCfg)
 	if err != nil {
