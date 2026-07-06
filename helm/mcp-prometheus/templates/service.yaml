@@ -11,6 +11,9 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+      {{- with .Values.service.appProtocol }}
+      appProtocol: {{ . }}
+      {{- end }}
     {{- if .Values.monitoring.enabled }}
     - port: {{ regexFind "[0-9]+$" .Values.app.server.metricsAddr | int }}
       targetPort: metrics

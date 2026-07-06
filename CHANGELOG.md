@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* `service.appProtocol` Helm value: sets `appProtocol` on the Service's `http` port when non-empty, so `agentgateway` can discover this Service as an MCP backend (e.g. `agentgateway.dev/mcp`). Unset by default; existing installs are unaffected.
 * `allowPrivateIPJWKSHosts` on `OAUTH_TRUSTED_ISSUERS` entries (and the `app.oauth.trustedIssuers` Helm values): a per-host allowlist for issuers whose JWKS URL resolves to a private/loopback IP, keeping SSRF protection on every other host. Prefer it over the blanket `allowPrivateIPJWKS` flag.
 
 ## [0.1.80](https://github.com/giantswarm/mcp-prometheus/compare/v0.1.79...v0.1.80) (2026-06-03)
