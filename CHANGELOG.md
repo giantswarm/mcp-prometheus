@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-* mcp-oauth updated to v1.x.
+* mcp-oauth updated to v1.0.1.
 
 ## [0.1.80](https://github.com/giantswarm/mcp-prometheus/compare/v0.1.79...v0.1.80) (2026-06-03)
 
