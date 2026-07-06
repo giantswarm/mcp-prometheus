@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* The `helm.sh/chart` label no longer ends with an invalid character when the 63-character truncation of `<name>-<version>` lands on a `.`. Long dev chart versions previously made every labeled resource fail admission (`metadata.labels: Invalid value`), so the chart could not be installed.
 * Team ownership: `application.giantswarm.io/team` annotation set to `atlas` (was `planeteers`).
 
 ### Added
