@@ -2,8 +2,20 @@ package oauth
 
 import (
 	"context"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"log/slog"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/giantswarm/mcp-oauth/providers/mock"
 	mcpserver "github.com/giantswarm/mcp-oauth/server"
@@ -358,6 +370,116 @@ func TestConfigFromEnvTrustedIssuersInvalid(t *testing.T) {
 
 	if _, err := ConfigFromEnv(); err == nil {
 		t.Error("expected error for malformed OAUTH_TRUSTED_ISSUERS")
+	}
+}
+
+// signRS256 mints a signed JWT with the given header and claims maps.
+func signRS256(t *testing.T, key *rsa.PrivateKey, header, claims map[string]any) string {
+	t.Helper()
+	encode := func(v map[string]any) string {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal JWT part: %v", err)
+		}
+		return base64.RawURLEncoding.EncodeToString(b)
+	}
+	signingInput := encode(header) + "." + encode(claims)
+	digest := sha256.Sum256([]byte(signingInput))
+	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
+	if err != nil {
+		t.Fatalf("sign JWT: %v", err)
+	}
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig)
+}
+
+func TestValidateTokenEnforcesTrustedIssuerAllowedClaims(t *testing.T) {
+	const (
+		keyID    = "test-key"
+		audience = "https://mcp-prometheus.example.com"
+	)
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate RSA key: %v", err)
+	}
+	jwks := map[string]any{
+		"keys": []map[string]any{{
+			"kty": "RSA",
+			"kid": keyID,
+			"use": "sig",
+			"alg": "RS256",
+			"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
+		}},
+	}
+	jwksServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(jwks); err != nil {
+			t.Errorf("encode JWKS: %v", err)
+		}
+	}))
+	defer jwksServer.Close()
+
+	raw := fmt.Sprintf(`[
+  {
+    "issuer": %q,
+    "jwksURL": %q,
+    "allowedAudiences": [%q],
+    "allowedClaims": {"sub": "*@giantswarm.io"},
+    "allowPrivateIPJWKS": true
+  }
+]`, testMusterIssuer, jwksServer.URL, audience)
+	issuers, err := parseTrustedIssuers(raw)
+	if err != nil {
+		t.Fatalf("parseTrustedIssuers: %v", err)
+	}
+	// RootCAs is runtime trust material, not part of the env-var config shape.
+	pool := x509.NewCertPool()
+	pool.AddCert(jwksServer.Certificate())
+	issuers[0].RootCAs = pool
+
+	h, cleanup, err := newHandlerWithProvider(t.Context(), mock.NewProvider(), Config{
+		Issuer:         testMCPIssuer,
+		TrustedIssuers: issuers,
+	}, slog.Default())
+	if err != nil {
+		t.Fatalf("newHandlerWithProvider: %v", err)
+	}
+	defer cleanup()
+
+	protected := h.ValidateToken(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	mintToken := func(sub string) string {
+		return signRS256(t, key,
+			map[string]any{"alg": "RS256", "typ": "at+jwt", "kid": keyID},
+			map[string]any{
+				"iss": testMusterIssuer,
+				"sub": sub,
+				"aud": audience,
+				"iat": time.Now().Unix(),
+				"exp": time.Now().Add(time.Minute).Unix(),
+			})
+	}
+
+	cases := []struct {
+		name       string
+		subject    string
+		wantStatus int
+	}{
+		{"sub matching *@giantswarm.io is accepted", "alice@giantswarm.io", http.StatusOK},
+		{"sub not matching *@giantswarm.io is rejected", "mallory@evil.example", http.StatusUnauthorized},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			req.Header.Set("Authorization", "Bearer "+mintToken(tc.subject))
+			rr := httptest.NewRecorder()
+			protected.ServeHTTP(rr, req)
+			if rr.Code != tc.wantStatus {
+				t.Errorf("sub %q: got status %d, want %d (body: %s)", tc.subject, rr.Code, tc.wantStatus, rr.Body.String())
+			}
+		})
 	}
 }
 
