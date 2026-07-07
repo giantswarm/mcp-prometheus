@@ -50,6 +50,10 @@ securityContext:
 service:
   type: ClusterIP
   port: 8080
+  # appProtocol for the http port. Set to "agentgateway.dev/mcp" so agentgateway
+  # discovers this Service as an MCP backend. Left empty by default so existing
+  # installs are unaffected.
+  appProtocol: ""
 
 ingress:
   enabled: false

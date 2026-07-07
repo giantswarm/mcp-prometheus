@@ -113,6 +113,10 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 65535
+        },
+        "appProtocol": {
+          "type": "string",
+          "description": "Optional appProtocol for the http Service port (e.g. agentgateway.dev/mcp for agentgateway discovery)."
         }
       },
       "required": [
