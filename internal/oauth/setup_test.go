@@ -30,6 +30,9 @@ const (
 	testMCPIssuer     = "https://mcp.example.com"
 	testMusterIssuer  = "https://muster.example.com"
 	testMusterJwksURL = "https://muster.example.com/.well-known/jwks.json"
+	testTypAtJWT      = "at+jwt"
+	testAlgRS256      = "RS256"
+	testKidHeader     = "kid"
 )
 
 func TestConfigFromEnvDefaults(t *testing.T) {
@@ -291,7 +294,7 @@ func TestParseTrustedIssuersValid(t *testing.T) {
 	if ti.AllowedClaims["sub"] != "*@giantswarm.io" {
 		t.Errorf("AllowedClaims[sub]: got %q", ti.AllowedClaims["sub"])
 	}
-	if len(ti.AcceptedTypHeaders) != 1 || ti.AcceptedTypHeaders[0] != "at+jwt" {
+	if len(ti.AcceptedTypHeaders) != 1 || ti.AcceptedTypHeaders[0] != testTypAtJWT {
 		t.Errorf("AcceptedTypHeaders: got %v", ti.AcceptedTypHeaders)
 	}
 	if !ti.AllowPrivateIPJWKS {
@@ -407,12 +410,12 @@ func TestValidateTokenEnforcesTrustedIssuerAllowedClaims(t *testing.T) {
 	}
 	jwks := map[string]any{
 		"keys": []map[string]any{{
-			"kty": "RSA",
-			"kid": keyID,
-			"use": "sig",
-			"alg": "RS256",
-			"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
-			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
+			"kty":         "RSA",
+			testKidHeader: keyID,
+			"use":         "sig",
+			"alg":         testAlgRS256,
+			"n":           base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+			"e":           base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
 		}},
 	}
 	jwksServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -455,7 +458,7 @@ func TestValidateTokenEnforcesTrustedIssuerAllowedClaims(t *testing.T) {
 	}))
 	mintToken := func(sub string) string {
 		return signRS256(t, key,
-			map[string]any{"alg": "RS256", "typ": "at+jwt", "kid": keyID},
+			map[string]any{"alg": testAlgRS256, "typ": "at+jwt", "kid": keyID},
 			map[string]any{
 				"iss": testMusterIssuer,
 				"sub": sub,
@@ -608,12 +611,12 @@ func TestTrustedIssuerInheritsDexCAPool(t *testing.T) {
 	}
 	jwks := map[string]any{
 		"keys": []map[string]any{{
-			"kty": "RSA",
-			"kid": keyID,
-			"use": "sig",
-			"alg": "RS256",
-			"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
-			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
+			"kty":         "RSA",
+			testKidHeader: keyID,
+			"use":         "sig",
+			"alg":         testAlgRS256,
+			"n":           base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+			"e":           base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
 		}},
 	}
 	jwksServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -644,7 +647,7 @@ func TestTrustedIssuerInheritsDexCAPool(t *testing.T) {
 	defer cleanup()
 
 	token := signRS256(t, key,
-		map[string]any{"alg": "RS256", "typ": "at+jwt", "kid": keyID},
+		map[string]any{"alg": testAlgRS256, "typ": "at+jwt", "kid": keyID},
 		map[string]any{
 			"iss": testMusterIssuer,
 			"sub": "alice@giantswarm.io",
