@@ -33,6 +33,7 @@ const (
 	testTypAtJWT      = "at+jwt"
 	testAlgRS256      = "RS256"
 	testKidHeader     = "kid"
+	testAlgHeader     = "alg"
 )
 
 func TestConfigFromEnvDefaults(t *testing.T) {
@@ -458,7 +459,7 @@ func TestValidateTokenEnforcesTrustedIssuerAllowedClaims(t *testing.T) {
 	}))
 	mintToken := func(sub string) string {
 		return signRS256(t, key,
-			map[string]any{"alg": testAlgRS256, "typ": "at+jwt", "kid": keyID},
+			map[string]any{testAlgHeader: testAlgRS256, "typ": "at+jwt", "kid": keyID},
 			map[string]any{
 				"iss": testMusterIssuer,
 				"sub": sub,
@@ -647,7 +648,7 @@ func TestTrustedIssuerInheritsDexCAPool(t *testing.T) {
 	defer cleanup()
 
 	token := signRS256(t, key,
-		map[string]any{"alg": testAlgRS256, "typ": "at+jwt", "kid": keyID},
+		map[string]any{testAlgHeader: testAlgRS256, "typ": "at+jwt", "kid": keyID},
 		map[string]any{
 			"iss": testMusterIssuer,
 			"sub": "alice@giantswarm.io",
