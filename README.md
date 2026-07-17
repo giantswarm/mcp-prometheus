@@ -128,6 +128,7 @@ All configuration is via environment variables.
 | `DEX_CLIENT_ID` | **required** | OAuth client ID registered in Dex |
 | `DEX_CLIENT_SECRET` | **required** | OAuth client secret |
 | `DEX_REDIRECT_URL` | **required** | Callback URL (e.g. `https://mcp.example.com/oauth/callback`) |
+| `DEX_CA_FILE` | — | PEM CA file verifying TLS for Dex and JWKS endpoints (private-CA installations). Added on top of the system trust store |
 
 ### Tenancy
 
@@ -247,6 +248,28 @@ DEX_ISSUER_URL=https://dex.mc.my-cluster.example.io   # resolves to 10.x.x.x
 ```
 
 In Helm: `app.oauth.allowPrivateURLs: true`
+
+### Private CA (DEX_CA_FILE)
+
+When Dex is served with a certificate from a private/internal CA (e.g. private management
+clusters), TLS verification fails with `x509: certificate signed by unknown authority`.
+Point `DEX_CA_FILE` at a PEM CA file to add that CA on top of the system trust store.
+The pool verifies the Dex provider connection (OIDC discovery, code flow, userinfo),
+the forwarded-ID-token JWKS endpoint, and trusted-issuer JWKS endpoints.
+
+```bash
+DEX_CA_FILE=/etc/ssl/certs/dex-ca/ca.crt
+```
+
+In Helm, reference a Secret holding the CA certificate:
+
+```yaml
+app:
+  oauth:
+    dexCASecret:
+      name: mcp-prometheus-dex-ca
+      key: ca.crt
+```
 
 ### SSO token forwarding (trustedAudiences)
 

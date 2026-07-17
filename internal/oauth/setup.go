@@ -3,10 +3,12 @@ package oauth
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -89,6 +91,15 @@ type Config struct {
 	// Set MCP_OAUTH_ALLOW_PRIVATE_URLS=true only in trusted internal environments
 	// where the Dex issuer URL uses internal DNS. TLS verification is still enforced.
 	AllowPrivateURLs bool
+
+	// DexCAFile is the path to a PEM-encoded CA certificate file used to verify
+	// TLS for Dex and for JWKS endpoints. Required when Dex is served with a
+	// certificate from a private/internal CA (e.g. on private management
+	// clusters). The pool is passed explicitly to the Dex provider client, the
+	// forwarded-ID-token JWKS validation, and trusted-issuer JWKS clients —
+	// mcp-oauth does not read a CA installed on http.DefaultTransport.
+	// Empty means the system trust store alone is used.
+	DexCAFile string
 }
 
 // TrustedIssuerConfig is the JSON shape of a single OAUTH_TRUSTED_ISSUERS entry.
@@ -165,9 +176,10 @@ func ConfigFromEnv() (Config, error) {
 		DexClientSecret:         os.Getenv("DEX_CLIENT_SECRET"),
 		DexRedirectURL:          os.Getenv("DEX_REDIRECT_URL"),
 		AllowPrivateURLs:        os.Getenv("MCP_OAUTH_ALLOW_PRIVATE_URLS") == envTrue,
+		DexCAFile:               os.Getenv("DEX_CA_FILE"),
 	}
 	if v := os.Getenv("OAUTH_TRUSTED_AUDIENCES"); v != "" {
-		for _, a := range strings.Split(v, ",") {
+		for a := range strings.SplitSeq(v, ",") {
 			if a = strings.TrimSpace(a); a != "" {
 				cfg.TrustedAudiences = append(cfg.TrustedAudiences, a)
 			}
@@ -203,27 +215,73 @@ func NewHandler(ctx context.Context, cfg Config, logger *slog.Logger) (*handler.
 		// Request groups so the tenant resolver can match GrafanaOrganization RBAC.
 		Scopes: []string{"openid", "profile", "email", "groups", "offline_access"},
 	}
-	if cfg.AllowPrivateURLs {
+	rootCAs, err := loadRootCAs(cfg.DexCAFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("oauth: %w", err)
+	}
+	if rootCAs != nil {
+		logger.Info("Using custom CA for Dex and JWKS TLS verification", "caFile", cfg.DexCAFile)
+	}
+	switch {
+	case cfg.AllowPrivateURLs:
 		// Inject an HTTP client that allows connections to private/internal IP
 		// ranges. Required when the Dex issuer URL is an internal DNS name that
 		// resolves to an RFC-1918 address (e.g. on a private management cluster).
 		// TLS verification is still enforced by this client. A nil CA pool
-		// selects the system trust store, matching the pre-v1 default (the Dex
-		// issuer here is expected to present a publicly-trusted certificate).
-		dexCfg.HTTPClient = mcpoidc.NewPrivateIPAllowedHTTPClient(30*time.Second, nil)
+		// selects the system trust store.
+		dexCfg.HTTPClient = mcpoidc.NewPrivateIPAllowedHTTPClient(30*time.Second, rootCAs)
+	case rootCAs != nil:
+		dexCfg.HTTPClient = httpClientWithRootCAs(rootCAs)
 	}
 	provider, err := dex.NewProvider(dexCfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("oauth: create Dex provider: %w", err)
 	}
 
-	return newHandlerWithProvider(ctx, provider, cfg, logger)
+	return newHandlerWithProvider(ctx, provider, cfg, rootCAs, logger)
+}
+
+// loadRootCAs builds a certificate pool from the system pool plus the
+// PEM-encoded CA certificate(s) in caFile. An empty caFile yields (nil, nil),
+// selecting the system trust store everywhere the pool is consumed.
+func loadRootCAs(caFile string) (*x509.CertPool, error) {
+	if caFile == "" {
+		return nil, nil
+	}
+	// #nosec G304 -- caFile is operator-provided configuration, not user input
+	caCert, err := os.ReadFile(caFile)
+	if err != nil {
+		return nil, fmt.Errorf("read CA file %s: %w", caFile, err)
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		pool = x509.NewCertPool()
+	}
+	if !pool.AppendCertsFromPEM(caCert) {
+		return nil, fmt.Errorf("parse CA certificate from %s", caFile)
+	}
+	return pool, nil
+}
+
+// httpClientWithRootCAs returns an HTTP client whose transport verifies TLS
+// against the given root CA pool.
+func httpClientWithRootCAs(pool *x509.CertPool) *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs:    pool,
+				MinVersion: tls.VersionTLS12,
+			},
+		},
+		Timeout: 30 * time.Second,
+	}
 }
 
 // newHandlerWithProvider wires a pre-built provider into the mcp-oauth server.
 // It is separated from NewHandler so that tests can inject a mock provider
-// without requiring a live Dex instance.
-func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cfg Config, logger *slog.Logger) (*handler.Handler, func(), error) {
+// without requiring a live Dex instance. rootCAs verifies JWKS endpoint TLS
+// for forwarded-ID-token validation and trusted issuers; nil = system pool.
+func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cfg Config, rootCAs *x509.CertPool, logger *slog.Logger) (*handler.Handler, func(), error) {
 	enc, err := buildEncryptor(cfg, logger)
 	if err != nil {
 		return nil, nil, err
@@ -239,11 +297,22 @@ func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cf
 		AllowPublicClientRegistration: cfg.AllowPublicRegistration,
 		AllowRefreshTokenRotation:     true,
 		TrustedAudiences:              cfg.TrustedAudiences,
+		JWKSRootCAs:                   rootCAs,
 	}
 
 	var opts []mcpoauth.ServerOption
 	if len(cfg.TrustedIssuers) > 0 {
-		opts = append(opts, mcpserver.WithTrustedIssuers(cfg.TrustedIssuers))
+		issuers := make([]mcpserver.TrustedIssuer, len(cfg.TrustedIssuers))
+		copy(issuers, cfg.TrustedIssuers)
+		for i := range issuers {
+			// Issuers built from OAUTH_TRUSTED_ISSUERS never carry their own
+			// pool, so the Dex CA pool applies to their JWKS TLS as well.
+			// A pre-set per-issuer pool wins.
+			if issuers[i].RootCAs == nil {
+				issuers[i].RootCAs = rootCAs
+			}
+		}
+		opts = append(opts, mcpserver.WithTrustedIssuers(issuers))
 	}
 
 	srv, err := mcpoauth.NewServer(provider, store, store, store, serverCfg, logger, opts...)

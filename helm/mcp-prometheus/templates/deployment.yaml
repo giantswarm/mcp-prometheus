@@ -128,9 +128,17 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- with .Values.volumeMounts }}
+          {{- $hasDexCA := and .Values.app.oauth.enabled .Values.app.oauth.dexCASecret.name }}
+          {{- if or .Values.volumeMounts $hasDexCA }}
           volumeMounts:
+            {{- if $hasDexCA }}
+            - name: dex-ca
+              mountPath: /etc/ssl/certs/dex-ca
+              readOnly: true
+            {{- end }}
+            {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- end }}
           {{- $hasStaticGroupMap := and .Values.app.oauth.enabled (not (empty .Values.app.tenancy.static.groups)) }}
           {{- if or .Values.app.env .Values.app.oauth.enabled $hasStaticGroupMap }}
@@ -148,6 +156,10 @@ spec:
             - name: OAUTH_TRUSTED_ISSUERS
               value: {{ .Values.app.oauth.trustedIssuers | toJson | quote }}
             {{- end }}
+            {{- if .Values.app.oauth.dexCASecret.name }}
+            - name: DEX_CA_FILE
+              value: "/etc/ssl/certs/dex-ca/{{ .Values.app.oauth.dexCASecret.key | default "ca.crt" }}"
+            {{- end }}
             {{- end }}
             {{- if $hasStaticGroupMap }}
             - name: TENANCY_STATIC_GROUP_MAP
@@ -162,9 +174,20 @@ spec:
             - secretRef:
                 name: {{ .Values.app.oauth.existingSecret | default (printf "%s-oauth" (include "mcp-prometheus.fullname" .)) }}
           {{- end }}
-      {{- with .Values.volumes }}
+      {{- $hasDexCA := and .Values.app.oauth.enabled .Values.app.oauth.dexCASecret.name }}
+      {{- if or .Values.volumes $hasDexCA }}
       volumes:
+        {{- if $hasDexCA }}
+        - name: dex-ca
+          secret:
+            secretName: {{ .Values.app.oauth.dexCASecret.name }}
+            items:
+              - key: {{ .Values.app.oauth.dexCASecret.key | default "ca.crt" }}
+                path: {{ .Values.app.oauth.dexCASecret.key | default "ca.crt" }}
+        {{- end }}
+        {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
