@@ -1,5 +1,6 @@
 # Binary output
 /mcp-prometheus
+/mcp-prometheus-*
 dist/
 
 # Configuration files

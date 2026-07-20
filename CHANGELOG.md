@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+* Use the canonical `io.giantswarm.application.team` annotation key for team ownership (value `atlas` unchanged).
+
+### Fixed
+
+* Team ownership: `application.giantswarm.io/team` annotation set to `atlas` (was `planeteers`).
+
+### Removed
+
+* `OAUTH_TRUSTED_ISSUERS` and the `app.oauth.trustedIssuers` Helm values. Tokens are accepted via the `trustedAudiences` passthrough (Dex-issued tokens); no backend trusts an external issuer.
+
 ## [0.1.80](https://github.com/giantswarm/mcp-prometheus/compare/v0.1.79...v0.1.80) (2026-06-03)
 
 
