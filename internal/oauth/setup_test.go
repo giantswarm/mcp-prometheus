@@ -9,11 +9,14 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -27,6 +30,10 @@ const (
 	testMCPIssuer     = "https://mcp.example.com"
 	testMusterIssuer  = "https://muster.example.com"
 	testMusterJwksURL = "https://muster.example.com/.well-known/jwks.json"
+	testTypAtJWT      = "at+jwt"
+	testAlgRS256      = "RS256"
+	testKidHeader     = "kid"
+	testAlgHeader     = "alg"
 )
 
 func TestConfigFromEnvDefaults(t *testing.T) {
@@ -226,7 +233,7 @@ func TestNewHandlerWithProviderMemoryStore(t *testing.T) {
 		Issuer:                  testMCPIssuer,
 		AllowPublicRegistration: true,
 	}
-	h, cleanup, err := newHandlerWithProvider(context.Background(), p, cfg, slog.Default())
+	h, cleanup, err := newHandlerWithProvider(context.Background(), p, cfg, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -244,7 +251,7 @@ func TestNewHandlerWithProviderShortEncryptionKey(t *testing.T) {
 		Issuer:        testMCPIssuer,
 		EncryptionKey: "0102030405", // 5 bytes, not 32
 	}
-	_, _, err := newHandlerWithProvider(context.Background(), p, cfg, slog.Default())
+	_, _, err := newHandlerWithProvider(context.Background(), p, cfg, nil, slog.Default())
 	if err == nil {
 		t.Error("expected error for short (non-32-byte) encryption key")
 	}
@@ -288,7 +295,7 @@ func TestParseTrustedIssuersValid(t *testing.T) {
 	if ti.AllowedClaims["sub"] != "*@giantswarm.io" {
 		t.Errorf("AllowedClaims[sub]: got %q", ti.AllowedClaims["sub"])
 	}
-	if len(ti.AcceptedTypHeaders) != 1 || ti.AcceptedTypHeaders[0] != "at+jwt" {
+	if len(ti.AcceptedTypHeaders) != 1 || ti.AcceptedTypHeaders[0] != testTypAtJWT {
 		t.Errorf("AcceptedTypHeaders: got %v", ti.AcceptedTypHeaders)
 	}
 	if !ti.AllowPrivateIPJWKS {
@@ -404,12 +411,12 @@ func TestValidateTokenEnforcesTrustedIssuerAllowedClaims(t *testing.T) {
 	}
 	jwks := map[string]any{
 		"keys": []map[string]any{{
-			"kty": "RSA",
-			"kid": keyID,
-			"use": "sig",
-			"alg": "RS256",
-			"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
-			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
+			"kty":         "RSA",
+			testKidHeader: keyID,
+			"use":         "sig",
+			"alg":         testAlgRS256,
+			"n":           base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+			"e":           base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
 		}},
 	}
 	jwksServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -441,7 +448,7 @@ func TestValidateTokenEnforcesTrustedIssuerAllowedClaims(t *testing.T) {
 	h, cleanup, err := newHandlerWithProvider(t.Context(), mock.NewProvider(), Config{
 		Issuer:         testMCPIssuer,
 		TrustedIssuers: issuers,
-	}, slog.Default())
+	}, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("newHandlerWithProvider: %v", err)
 	}
@@ -452,7 +459,7 @@ func TestValidateTokenEnforcesTrustedIssuerAllowedClaims(t *testing.T) {
 	}))
 	mintToken := func(sub string) string {
 		return signRS256(t, key,
-			map[string]any{"alg": "RS256", "typ": "at+jwt", "kid": keyID},
+			map[string]any{testAlgHeader: testAlgRS256, "typ": "at+jwt", "kid": keyID},
 			map[string]any{
 				"iss": testMusterIssuer,
 				"sub": sub,
@@ -495,12 +502,169 @@ func TestNewHandlerWithProviderTrustedIssuers(t *testing.T) {
 			},
 		},
 	}
-	h, cleanup, err := newHandlerWithProvider(context.Background(), p, cfg, slog.Default())
+	h, cleanup, err := newHandlerWithProvider(context.Background(), p, cfg, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	defer cleanup()
 	if h == nil {
 		t.Error("expected non-nil handler")
+	}
+}
+
+// --- Dex CA file (private-CA installations) ---
+
+func TestConfigFromEnvDexCAFile(t *testing.T) {
+	t.Setenv("DEX_CA_FILE", "/etc/ssl/certs/dex-ca/ca.crt")
+
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.DexCAFile != "/etc/ssl/certs/dex-ca/ca.crt" {
+		t.Errorf("DexCAFile: got %q", cfg.DexCAFile)
+	}
+}
+
+func TestLoadRootCAsEmptyPath(t *testing.T) {
+	pool, err := loadRootCAs("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pool != nil {
+		t.Error("expected nil pool for empty path (system trust store)")
+	}
+}
+
+func TestLoadRootCAsMissingFile(t *testing.T) {
+	if _, err := loadRootCAs(filepath.Join(t.TempDir(), "absent.crt")); err == nil {
+		t.Error("expected error for missing file")
+	}
+}
+
+func TestLoadRootCAsInvalidPEM(t *testing.T) {
+	caFile := filepath.Join(t.TempDir(), "ca.crt")
+	if err := os.WriteFile(caFile, []byte("not a certificate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadRootCAs(caFile); err == nil {
+		t.Error("expected error for invalid PEM")
+	}
+}
+
+func TestLoadRootCAsValid(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	caFile := filepath.Join(t.TempDir(), "ca.crt")
+	pem := pemEncodeCert(t, server.Certificate())
+	if err := os.WriteFile(caFile, pem, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	pool, err := loadRootCAs(caFile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pool == nil {
+		t.Fatal("expected non-nil pool")
+	}
+
+	resp, err := httpClientWithRootCAs(pool).Get(server.URL)
+	if err != nil {
+		t.Fatalf("request against pool-verified server: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+}
+
+func pemEncodeCert(t *testing.T, cert *x509.Certificate) []byte {
+	t.Helper()
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+}
+
+// TestNewHandlerUnreadableDexCAFile verifies that a configured but unreadable
+// DEX_CA_FILE fails startup instead of silently falling back to the system pool.
+func TestNewHandlerUnreadableDexCAFile(t *testing.T) {
+	cfg := Config{
+		Issuer:          testMCPIssuer,
+		DexIssuerURL:    testDexIssuer,
+		DexClientID:     "mcp-prometheus",
+		DexClientSecret: testSecret,
+		DexRedirectURL:  testMCPIssuer + "/oauth/callback",
+		DexCAFile:       filepath.Join(t.TempDir(), "absent.crt"),
+	}
+	if _, _, err := NewHandler(t.Context(), cfg, slog.Default()); err == nil {
+		t.Error("expected error for unreadable DEX_CA_FILE")
+	}
+}
+
+// TestTrustedIssuerInheritsDexCAPool verifies that trusted issuers without an
+// explicit per-issuer pool have their JWKS TLS verified against the Dex CA pool.
+func TestTrustedIssuerInheritsDexCAPool(t *testing.T) {
+	const keyID = "test-key"
+	const audience = testMCPIssuer
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate RSA key: %v", err)
+	}
+	jwks := map[string]any{
+		"keys": []map[string]any{{
+			"kty":         "RSA",
+			testKidHeader: keyID,
+			"use":         "sig",
+			"alg":         testAlgRS256,
+			"n":           base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+			"e":           base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
+		}},
+	}
+	jwksServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(jwks); err != nil {
+			t.Errorf("encode JWKS: %v", err)
+		}
+	}))
+	defer jwksServer.Close()
+
+	issuers := []mcpserver.TrustedIssuer{{
+		Issuer:             testMusterIssuer,
+		JwksURL:            jwksServer.URL,
+		AllowedAudiences:   []string{audience},
+		AllowPrivateIPJWKS: true,
+	}}
+
+	pool := x509.NewCertPool()
+	pool.AddCert(jwksServer.Certificate())
+
+	h, cleanup, err := newHandlerWithProvider(t.Context(), mock.NewProvider(), Config{
+		Issuer:         testMCPIssuer,
+		TrustedIssuers: issuers,
+	}, pool, slog.Default())
+	if err != nil {
+		t.Fatalf("newHandlerWithProvider: %v", err)
+	}
+	defer cleanup()
+
+	token := signRS256(t, key,
+		map[string]any{testAlgHeader: testAlgRS256, "typ": "at+jwt", "kid": keyID},
+		map[string]any{
+			"iss": testMusterIssuer,
+			"sub": "alice@giantswarm.io",
+			"aud": audience,
+			"iat": time.Now().Unix(),
+			"exp": time.Now().Add(time.Minute).Unix(),
+		})
+
+	protected := h.ValidateToken(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	protected.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 with issuer JWKS verified via Dex CA pool, got %d (%s)", rr.Code, rr.Body.String())
 	}
 }
