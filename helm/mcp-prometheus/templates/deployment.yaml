@@ -1,3 +1,4 @@
+{{- $hasDexCA := and .Values.app.oauth.enabled .Values.app.oauth.dexCASecret.name -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -128,7 +129,6 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- $hasDexCA := and .Values.app.oauth.enabled .Values.app.oauth.dexCASecret.name }}
           {{- if or .Values.volumeMounts $hasDexCA }}
           volumeMounts:
             {{- if $hasDexCA }}
@@ -174,7 +174,6 @@ spec:
             - secretRef:
                 name: {{ .Values.app.oauth.existingSecret | default (printf "%s-oauth" (include "mcp-prometheus.fullname" .)) }}
           {{- end }}
-      {{- $hasDexCA := and .Values.app.oauth.enabled .Values.app.oauth.dexCASecret.name }}
       {{- if or .Values.volumes $hasDexCA }}
       volumes:
         {{- if $hasDexCA }}
