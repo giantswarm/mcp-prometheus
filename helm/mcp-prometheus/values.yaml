@@ -50,6 +50,10 @@ securityContext:
 service:
   type: ClusterIP
   port: 8080
+  # appProtocol for the http port. Set to "agentgateway.dev/mcp" so agentgateway
+  # discovers this Service as an MCP backend. Left empty by default so existing
+  # installs are unaffected.
+  appProtocol: ""
 
 ingress:
   enabled: false
@@ -171,6 +175,14 @@ app:
     # TLS verification is still enforced.
     # Set to true only when the Dex issuer URL uses internal DNS.
     allowPrivateURLs: false
+
+    # Secret holding a PEM CA certificate used to verify TLS for Dex and JWKS
+    # endpoints. Required on installations where Dex is served with a
+    # certificate from a private/internal CA. The CA is added on top of the
+    # system trust store. Leave name empty to use the system trust store alone.
+    dexCASecret:
+      name: ""
+      key: "ca.crt"
 
     # Token storage backend
     storage:

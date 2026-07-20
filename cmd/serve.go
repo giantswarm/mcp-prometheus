@@ -72,6 +72,8 @@ OAuth 2.1 (when --enable-oauth is set):
   DEX_CLIENT_ID                 - Dex OAuth client ID (required)
   DEX_CLIENT_SECRET             - Dex OAuth client secret (required)
   DEX_REDIRECT_URL              - OAuth redirect URL (required)
+  DEX_CA_FILE                   - Optional: PEM CA file for Dex/JWKS TLS verification
+                                  (private-CA installations; added to the system pool)
 
 Tenancy (when --enable-oauth is set):
   --tenancy-mode                - grafana-organization (default) or static

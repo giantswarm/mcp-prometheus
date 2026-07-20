@@ -202,7 +202,7 @@ func TestNewHandlerWithProviderMemoryStore(t *testing.T) {
 		Issuer:                  testMCPIssuer,
 		AllowPublicRegistration: true,
 	}
-	h, cleanup, err := newHandlerWithProvider(context.Background(), p, cfg, slog.Default())
+	h, cleanup, err := newHandlerWithProvider(context.Background(), p, cfg, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestNewHandlerWithProviderShortEncryptionKey(t *testing.T) {
 		Issuer:        testMCPIssuer,
 		EncryptionKey: "0102030405", // 5 bytes, not 32
 	}
-	_, _, err := newHandlerWithProvider(context.Background(), p, cfg, slog.Default())
+	_, _, err := newHandlerWithProvider(context.Background(), p, cfg, nil, slog.Default())
 	if err == nil {
 		t.Error("expected error for short (non-32-byte) encryption key")
 	}

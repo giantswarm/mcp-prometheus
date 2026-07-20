@@ -113,6 +113,10 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 65535
+        },
+        "appProtocol": {
+          "type": "string",
+          "description": "Optional appProtocol for the http Service port (e.g. agentgateway.dev/mcp for agentgateway discovery)."
         }
       },
       "required": [
@@ -255,6 +259,20 @@
             "allowPublicRegistration": {
               "type": "boolean",
               "description": "Allow unauthenticated dynamic client registration. true only for dev/MCP Inspector; false in production."
+            },
+            "dexCASecret": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Secret holding a PEM CA certificate used to verify TLS for Dex and JWKS endpoints (private-CA installations). Empty uses the system trust store alone."
+                },
+                "key": {
+                  "type": "string",
+                  "description": "Key within the Secret holding the CA certificate."
+                }
+              },
+              "additionalProperties": false
             },
             "storage": {
               "type": "object",
