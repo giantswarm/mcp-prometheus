@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -17,7 +16,6 @@ import (
 	"github.com/giantswarm/mcp-oauth/providers/dex"
 	mcpoidc "github.com/giantswarm/mcp-oauth/providers/oidc"
 	"github.com/giantswarm/mcp-oauth/security"
-	mcpserver "github.com/giantswarm/mcp-oauth/server"
 	"github.com/giantswarm/mcp-oauth/storage"
 	"github.com/giantswarm/mcp-oauth/storage/memory"
 	"github.com/giantswarm/mcp-oauth/storage/valkey"
@@ -74,12 +72,6 @@ type Config struct {
 	// Tokens must still be from the configured issuer (Dex) and cryptographically valid.
 	TrustedAudiences []string
 
-	// TrustedIssuers lists external JWT issuers (e.g. muster) whose Bearer tokens
-	// are accepted at the resource-server endpoint. A token whose iss matches an
-	// entry is verified against that entry's JWKS and constraints; its groups
-	// claim then drives tenancy resolution. Populated from OAUTH_TRUSTED_ISSUERS.
-	TrustedIssuers []mcpserver.TrustedIssuer
-
 	// AllowPrivateURLs permits OIDC discovery against Dex instances whose hostname
 	// resolves to a private/internal IP address (e.g. dex.<mc>.<baseDomain> on a
 	// private management cluster). When true, the HTTP client used for OIDC
@@ -91,51 +83,6 @@ type Config struct {
 	AllowPrivateURLs bool
 }
 
-// TrustedIssuerConfig is the JSON shape of a single OAUTH_TRUSTED_ISSUERS entry.
-// It maps to the subset of mcpserver.TrustedIssuer a Prometheus resource server
-// needs: tenancy is group-based, so the subject claim is left at its default.
-type TrustedIssuerConfig struct {
-	Issuer             string            `json:"issuer"`
-	JwksURL            string            `json:"jwksURL"`
-	AllowedAudiences   []string          `json:"allowedAudiences,omitempty"`
-	AllowedScopes      []string          `json:"allowedScopes,omitempty"`
-	AllowedClaims      map[string]string `json:"allowedClaims,omitempty"`
-	AcceptedTypHeaders []string          `json:"acceptedTypHeaders,omitempty"`
-	AllowPrivateIPJWKS bool              `json:"allowPrivateIPJWKS,omitempty"`
-}
-
-// parseTrustedIssuers decodes the OAUTH_TRUSTED_ISSUERS JSON array into
-// mcpserver.TrustedIssuer values. An empty string yields (nil, nil). Each entry
-// must carry a non-empty issuer and jwksURL.
-func parseTrustedIssuers(raw string) ([]mcpserver.TrustedIssuer, error) {
-	if raw == "" {
-		return nil, nil
-	}
-	var entries []TrustedIssuerConfig
-	if err := json.Unmarshal([]byte(raw), &entries); err != nil {
-		return nil, fmt.Errorf("OAUTH_TRUSTED_ISSUERS: invalid JSON: %w", err)
-	}
-	issuers := make([]mcpserver.TrustedIssuer, 0, len(entries))
-	for i, e := range entries {
-		if e.Issuer == "" {
-			return nil, fmt.Errorf("OAUTH_TRUSTED_ISSUERS[%d]: issuer is required", i)
-		}
-		if e.JwksURL == "" {
-			return nil, fmt.Errorf("OAUTH_TRUSTED_ISSUERS[%d] (%s): jwksURL is required", i, e.Issuer)
-		}
-		issuers = append(issuers, mcpserver.TrustedIssuer{
-			Issuer:             e.Issuer,
-			JwksURL:            e.JwksURL,
-			AllowedAudiences:   e.AllowedAudiences,
-			AllowedScopes:      e.AllowedScopes,
-			AllowedClaims:      e.AllowedClaims,
-			AcceptedTypHeaders: e.AcceptedTypHeaders,
-			AllowPrivateIPJWKS: e.AllowPrivateIPJWKS,
-		})
-	}
-	return issuers, nil
-}
-
 // envTrue is the string value that enables a boolean env var.
 const envTrue = "true"
 
@@ -143,9 +90,7 @@ const envTrue = "true"
 const storageTypeValkey = "valkey"
 
 // ConfigFromEnv builds a Config by reading the standard environment variables.
-// It returns an error when OAUTH_TRUSTED_ISSUERS holds malformed JSON or an
-// entry is missing a required field.
-func ConfigFromEnv() (Config, error) {
+func ConfigFromEnv() Config {
 	cfg := Config{
 		Issuer:                  os.Getenv("MCP_OAUTH_ISSUER"),
 		EncryptionKey:           os.Getenv("MCP_OAUTH_ENCRYPTION_KEY"),
@@ -162,18 +107,13 @@ func ConfigFromEnv() (Config, error) {
 		AllowPrivateURLs:        os.Getenv("MCP_OAUTH_ALLOW_PRIVATE_URLS") == envTrue,
 	}
 	if v := os.Getenv("OAUTH_TRUSTED_AUDIENCES"); v != "" {
-		for _, a := range strings.Split(v, ",") {
+		for a := range strings.SplitSeq(v, ",") {
 			if a = strings.TrimSpace(a); a != "" {
 				cfg.TrustedAudiences = append(cfg.TrustedAudiences, a)
 			}
 		}
 	}
-	issuers, err := parseTrustedIssuers(os.Getenv("OAUTH_TRUSTED_ISSUERS"))
-	if err != nil {
-		return Config{}, err
-	}
-	cfg.TrustedIssuers = issuers
-	return cfg, nil
+	return cfg
 }
 
 // NewHandler initialises the mcp-oauth Handler from the given Config.
@@ -234,12 +174,7 @@ func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cf
 		TrustedAudiences:              cfg.TrustedAudiences,
 	}
 
-	var opts []mcpoauth.ServerOption
-	if len(cfg.TrustedIssuers) > 0 {
-		opts = append(opts, mcpserver.WithTrustedIssuers(cfg.TrustedIssuers))
-	}
-
-	srv, err := mcpoauth.NewServer(provider, store, store, store, serverCfg, logger, opts...)
+	srv, err := mcpoauth.NewServer(provider, store, store, store, serverCfg, logger)
 	if err != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("oauth: create server: %w", err)

@@ -197,29 +197,6 @@ app:
     # Default: [] (only accept tokens issued directly to this server's client_id)
     trustedAudiences: []
 
-    # Trusted external JWT issuers for Bearer tokens presented at /mcp.
-    # A token whose `iss` matches an entry is verified against that entry's JWKS
-    # and constraints; its `groups` claim then drives GrafanaOrganization tenancy.
-    # Use this to accept tokens minted by muster.
-    #
-    # Each entry maps to mcp-oauth's TrustedIssuer:
-    #   issuer:             expected `iss` claim (required)
-    #   jwksURL:            JWKS endpoint for signature verification (required)
-    #   allowedAudiences:   accepted `aud` values (this server's resource identifier)
-    #   allowedScopes:      cap on scopes accepted from this issuer (optional)
-    #   allowedClaims:      map of claim → exact/glob pattern the token must match
-    #   acceptedTypHeaders: accepted JWT `typ` headers (default ["at+jwt"])
-    #   allowPrivateIPJWKS: allow a private/loopback JWKS host (disables SSRF guard)
-    #
-    # Example:
-    #   - issuer: "https://muster.example.com"
-    #     jwksURL: "https://muster.example.com/.well-known/jwks.json"
-    #     allowedAudiences: ["https://mcp-prometheus.example.com"]
-    #     acceptedTypHeaders: ["at+jwt"]
-    #     allowPrivateIPJWKS: false
-    # Default: [] (no external issuers trusted)
-    trustedIssuers: []
-
   # Tenancy resolution configuration (only relevant when app.oauth.enabled: true).
   tenancy:
     # Resolution mode.

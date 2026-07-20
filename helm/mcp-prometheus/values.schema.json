@@ -293,60 +293,6 @@
               "default": [],
               "description": "OAuth client IDs whose tokens are accepted for SSO token forwarding (e.g., from muster)"
             },
-            "trustedIssuers": {
-              "type": "array",
-              "default": [],
-              "description": "External JWT issuers (e.g. muster) whose Bearer tokens are accepted at /mcp; the token's groups claim drives tenancy.",
-              "items": {
-                "type": "object",
-                "required": [
-                  "issuer",
-                  "jwksURL"
-                ],
-                "properties": {
-                  "issuer": {
-                    "type": "string",
-                    "description": "Expected iss claim value."
-                  },
-                  "jwksURL": {
-                    "type": "string",
-                    "description": "JWKS endpoint used to verify token signatures."
-                  },
-                  "allowedAudiences": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "description": "Accepted aud values (this server's resource identifier)."
-                  },
-                  "allowedScopes": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "description": "Cap on scopes accepted from this issuer."
-                  },
-                  "allowedClaims": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    },
-                    "description": "Claim name to exact/glob pattern the token must match."
-                  },
-                  "acceptedTypHeaders": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "description": "Accepted JWT typ headers. Defaults to [\"at+jwt\"]."
-                  },
-                  "allowPrivateIPJWKS": {
-                    "type": "boolean",
-                    "description": "Allow the JWKS host to resolve to a private/loopback IP. Disables SSRF protection for this issuer's JWKS fetch."
-                  }
-                }
-              }
-            },
             "allowPrivateURLs": {
               "type": "boolean",
               "description": "Allow OIDC discovery against Dex instances whose hostname resolves to a private/RFC-1918 IP. Required when Dex runs on a private management cluster. Bypasses SSRF protection in the HTTP transport layer only — TLS is still enforced."
