@@ -152,10 +152,6 @@ spec:
             - name: OAUTH_TRUSTED_AUDIENCES
               value: {{ .Values.app.oauth.trustedAudiences | join "," | quote }}
             {{- end }}
-            {{- if .Values.app.oauth.trustedIssuers }}
-            - name: OAUTH_TRUSTED_ISSUERS
-              value: {{ .Values.app.oauth.trustedIssuers | toJson | quote }}
-            {{- end }}
             {{- if .Values.app.oauth.dexCASecret.name }}
             - name: DEX_CA_FILE
               value: "/etc/ssl/certs/dex-ca/{{ .Values.app.oauth.dexCASecret.key | default "ca.crt" }}"

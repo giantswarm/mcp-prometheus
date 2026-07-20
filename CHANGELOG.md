@@ -19,7 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * `DEX_CA_FILE` environment variable and `app.oauth.dexCASecret` Helm value: verify TLS for Dex and JWKS endpoints against a private/internal CA (added on top of the system trust store). Required on installations where Dex is served with a certificate from a private CA.
 * `service.appProtocol` Helm value: sets `appProtocol` on the Service's `http` port when non-empty, so `agentgateway` can discover this Service as an MCP backend (e.g. `agentgateway.dev/mcp`). Unset by default; existing installs are unaffected.
-* `allowPrivateIPJWKSHosts` on `OAUTH_TRUSTED_ISSUERS` entries (and the `app.oauth.trustedIssuers` Helm values): a per-host allowlist for issuers whose JWKS URL resolves to a private/loopback IP, keeping SSRF protection on every other host. Prefer it over the blanket `allowPrivateIPJWKS` flag.
+
+### Removed
+
+* `OAUTH_TRUSTED_ISSUERS` and the `app.oauth.trustedIssuers` Helm values. Tokens are accepted via the `trustedAudiences` passthrough (Dex-issued tokens); no backend trusts an external issuer.
 
 ## [0.1.80](https://github.com/giantswarm/mcp-prometheus/compare/v0.1.79...v0.1.80) (2026-06-03)
 
