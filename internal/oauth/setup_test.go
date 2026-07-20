@@ -2,7 +2,13 @@ package oauth
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/giantswarm/mcp-oauth/providers/mock"
@@ -223,5 +229,88 @@ func TestNewHandlerWithProviderShortEncryptionKey(t *testing.T) {
 	_, _, err := newHandlerWithProvider(context.Background(), p, cfg, nil, slog.Default())
 	if err == nil {
 		t.Error("expected error for short (non-32-byte) encryption key")
+	}
+}
+
+// --- Dex CA file (private-CA installations) ---
+
+func TestConfigFromEnvDexCAFile(t *testing.T) {
+	t.Setenv("DEX_CA_FILE", "/etc/ssl/certs/dex-ca/ca.crt")
+
+	cfg := ConfigFromEnv()
+	if cfg.DexCAFile != "/etc/ssl/certs/dex-ca/ca.crt" {
+		t.Errorf("DexCAFile: got %q", cfg.DexCAFile)
+	}
+}
+
+func TestLoadRootCAsEmptyPath(t *testing.T) {
+	pool, err := loadRootCAs("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pool != nil {
+		t.Error("expected nil pool for empty path (system trust store)")
+	}
+}
+
+func TestLoadRootCAsMissingFile(t *testing.T) {
+	if _, err := loadRootCAs(filepath.Join(t.TempDir(), "absent.crt")); err == nil {
+		t.Error("expected error for missing file")
+	}
+}
+
+func TestLoadRootCAsInvalidPEM(t *testing.T) {
+	caFile := filepath.Join(t.TempDir(), "ca.crt")
+	if err := os.WriteFile(caFile, []byte("not a certificate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadRootCAs(caFile); err == nil {
+		t.Error("expected error for invalid PEM")
+	}
+}
+
+func TestLoadRootCAsValid(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	caFile := filepath.Join(t.TempDir(), "ca.crt")
+	pemBytes := pemEncodeCert(t, server.Certificate())
+	if err := os.WriteFile(caFile, pemBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	pool, err := loadRootCAs(caFile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pool == nil {
+		t.Fatal("expected non-nil pool")
+	}
+
+	resp, err := httpClientWithRootCAs(pool).Get(server.URL)
+	if err != nil {
+		t.Fatalf("request against pool-verified server: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+}
+
+func pemEncodeCert(t *testing.T, cert *x509.Certificate) []byte {
+	t.Helper()
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+}
+
+func TestNewHandlerUnreadableDexCAFile(t *testing.T) {
+	cfg := Config{
+		Issuer:          testMCPIssuer,
+		DexIssuerURL:    testDexIssuer,
+		DexClientID:     "mcp-prometheus",
+		DexClientSecret: testSecret,
+		DexRedirectURL:  testMCPIssuer + "/oauth/callback",
+		DexCAFile:       filepath.Join(t.TempDir(), "absent.crt"),
+	}
+	if _, _, err := NewHandler(t.Context(), cfg, slog.Default()); err == nil {
+		t.Error("expected error for unreadable DEX_CA_FILE")
 	}
 }
