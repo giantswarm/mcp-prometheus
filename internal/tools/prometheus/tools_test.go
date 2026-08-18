@@ -873,3 +873,44 @@ func TestTruncateWithAdviceUTF8(t *testing.T) {
 		}
 	})
 }
+
+func TestGetRulesSendsNoMatchers(t *testing.T) {
+	// client_golang v1.24 added a `matches` argument to Rules; GetRules passes
+	// nil so that no match[] filter is sent and all rules are returned.
+	var gotMatchers []string
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/rules" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		gotMatchers = r.URL.Query()["match[]"]
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			respKeyStatus: respValSuccess,
+			respKeyData:   map[string]any{"groups": []any{}},
+		})
+	}))
+	defer mockServer.Close()
+
+	ctx := context.Background()
+	sc, err := server.NewServerContext(ctx,
+		server.WithPrometheusConfig(server.PrometheusConfig{URL: mockServer.URL}),
+		server.WithSlogLogger(discardLogger()),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create server context: %v", err)
+	}
+	defer func() { _ = sc.Shutdown() }()
+
+	client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	if _, err := client.GetRules(ctx); err != nil {
+		t.Fatalf("GetRules: %v", err)
+	}
+	if len(gotMatchers) != 0 {
+		t.Errorf("expected no match[] query params, got %q", gotMatchers)
+	}
+}

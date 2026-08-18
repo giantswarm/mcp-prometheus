@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 * Use the canonical `io.giantswarm.application.team` annotation key for team ownership (value `atlas` unchanged).
+* Adapt the Prometheus API client to `prometheus/client_golang` v1.24: `LabelNames` now returns `model.LabelNames` and `Rules` takes a matcher list. Behaviour is unchanged — `GetRules` passes no matchers, so all rules are still returned.
 
 ### Fixed
 
