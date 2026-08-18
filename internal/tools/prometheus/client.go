@@ -534,8 +534,15 @@ func (c *Client) ListLabelNames(ctx context.Context, options LabelOptions) (*Lab
 		warningStrs[i] = string(w)
 	}
 
+	// LabelNames returns model.LabelNames, so convert it to a plain string
+	// slice to keep the JSON result shape stable.
+	labelNameStrs := make([]string, len(labelNames))
+	for i, n := range labelNames {
+		labelNameStrs[i] = string(n)
+	}
+
 	return &LabelNamesResult{
-		LabelNames: labelNames,
+		LabelNames: labelNameStrs,
 		Warnings:   warningStrs,
 	}, nil
 }
@@ -693,7 +700,9 @@ func (c *Client) GetRules(ctx context.Context) (interface{}, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	rules, err := c.client.Rules(ctx)
+	// A nil matcher list requests all rules, preserving the previous behaviour
+	// of the single-argument Rules call.
+	rules, err := c.client.Rules(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rules: %w", err)
 	}
