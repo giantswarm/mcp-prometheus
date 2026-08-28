@@ -3,7 +3,7 @@ module github.com/giantswarm/mcp-prometheus
 go 1.26.0
 
 require (
-	github.com/giantswarm/mcp-oauth v1.3.1
+	github.com/giantswarm/mcp-oauth v1.3.7
 	github.com/mark3labs/mcp-go v0.58.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.70.1
@@ -60,9 +60,9 @@ require (
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.46.0 // indirect
-	go.opentelemetry.io/otel/exporters/prometheus v0.67.0 // indirect
-	go.opentelemetry.io/otel/exporters/stdout/stdoutmetric v1.45.0 // indirect
-	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.45.0 // indirect
+	go.opentelemetry.io/otel/exporters/prometheus v0.68.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdoutmetric v1.46.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.46.0 // indirect
 	go.opentelemetry.io/otel/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.46.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
