@@ -118,7 +118,7 @@ monitoring:
     # interval: 30s
     # scrapeTimeout: 10s
     # Additional labels to add to the ServiceMonitor (e.g. to match a Prometheus selector).
-    labels: {}
+    labels: {}  # @schema additionalProperties: true
 
 nodeSelector: {}
 
