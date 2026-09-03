@@ -31,6 +31,22 @@ func TestNewResolverForMode_GrafanaOrganization_ErrorOutsideCluster(t *testing.T
 	}
 }
 
+func TestNewResolverForMode_None(t *testing.T) {
+	// "none" must yield a nil resolver (untyped nil interface) and no error so
+	// tool handlers pass explicit org IDs through without touching the identity.
+	r, err := NewResolverForMode(ModeNone, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r != nil {
+		t.Errorf("expected nil resolver for mode none, got %T", r)
+	}
+	// Static configuration is irrelevant in none mode and must not be rejected.
+	if _, err := NewResolverForMode(ModeNone, []string{tenantProdEU}, map[string][]string{groupTeamOps: {tenantProdEU}}); err != nil {
+		t.Errorf("unexpected error with ignored static config: %v", err)
+	}
+}
+
 func TestNewResolverForMode_UnknownMode(t *testing.T) {
 	_, err := NewResolverForMode(Mode("invalid-mode"), nil, nil)
 	if err == nil {

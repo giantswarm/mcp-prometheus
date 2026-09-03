@@ -12,6 +12,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/giantswarm/mcp-oauth/handler"
+	"github.com/giantswarm/mcp-oauth/providers"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
@@ -912,5 +914,93 @@ func TestGetRulesSendsNoMatchers(t *testing.T) {
 	}
 	if len(gotMatchers) != 0 {
 		t.Errorf("expected no match[] query params, got %q", gotMatchers)
+	}
+}
+
+// --- resolveTenantOrgID ---
+
+const testTenant = "team-a"
+
+// stubTenancyResolver returns a fixed tenant list for every group set.
+type stubTenancyResolver struct{ tenants []string }
+
+func (s *stubTenancyResolver) TenantsForGroups(_ context.Context, _ []string) ([]string, error) {
+	return s.tenants, nil
+}
+
+func newTenancyTestContext(t *testing.T, opts ...server.ServerOption) *server.ServerContext {
+	t.Helper()
+	opts = append([]server.ServerOption{server.WithSlogLogger(discardLogger())}, opts...)
+	sc, err := server.NewServerContext(context.Background(), opts...)
+	if err != nil {
+		t.Fatalf("Failed to create server context: %v", err)
+	}
+	t.Cleanup(func() { _ = sc.Shutdown() })
+	return sc
+}
+
+func TestResolveTenantOrgID_OAuthDisabled(t *testing.T) {
+	sc := newTenancyTestContext(t)
+	for _, explicit := range []string{"", testTenant} {
+		got, err := resolveTenantOrgID(context.Background(), sc, explicit)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != explicit {
+			t.Errorf("explicit %q: got %q, want passthrough", explicit, got)
+		}
+	}
+}
+
+// TestResolveTenantOrgID_NilResolver covers tenancy mode "none": OAuth is on
+// but no resolver is configured, so the explicit org_id is returned verbatim
+// (including the empty string) and no user info is required in ctx.
+func TestResolveTenantOrgID_NilResolver(t *testing.T) {
+	sc := newTenancyTestContext(t,
+		server.WithOAuthEnabled(true),
+		server.WithTenancyResolver(nil),
+	)
+	for _, explicit := range []string{"", testTenant} {
+		got, err := resolveTenantOrgID(context.Background(), sc, explicit)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != explicit {
+			t.Errorf("explicit %q: got %q, want passthrough", explicit, got)
+		}
+	}
+}
+
+func TestResolveTenantOrgID_ResolverRequiresUserInfo(t *testing.T) {
+	sc := newTenancyTestContext(t,
+		server.WithOAuthEnabled(true),
+		server.WithTenancyResolver(&stubTenancyResolver{tenants: []string{testTenant}}),
+	)
+	if _, err := resolveTenantOrgID(context.Background(), sc, ""); err == nil {
+		t.Fatal("expected error when no user info is in the context")
+	}
+}
+
+func TestResolveTenantOrgID_ResolverInjectsTenant(t *testing.T) {
+	sc := newTenancyTestContext(t,
+		server.WithOAuthEnabled(true),
+		server.WithTenancyResolver(&stubTenancyResolver{tenants: []string{testTenant}}),
+	)
+	ctx := handler.ContextWithUserInfo(context.Background(), &providers.UserInfo{
+		ID:     "user-1",
+		Groups: []string{"team-a-admins"},
+	})
+
+	got, err := resolveTenantOrgID(ctx, sc, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != testTenant {
+		t.Errorf("got %q, want %q", got, testTenant)
+	}
+
+	// An explicit org_id outside the allowed set is rejected.
+	if _, err := resolveTenantOrgID(ctx, sc, "other-tenant"); err == nil {
+		t.Error("expected error for org_id outside the allowed tenants")
 	}
 }

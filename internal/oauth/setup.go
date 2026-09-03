@@ -16,6 +16,7 @@ import (
 	"github.com/giantswarm/mcp-oauth/handler"
 	"github.com/giantswarm/mcp-oauth/providers"
 	"github.com/giantswarm/mcp-oauth/providers/dex"
+	"github.com/giantswarm/mcp-oauth/providers/google"
 	mcpoidc "github.com/giantswarm/mcp-oauth/providers/oidc"
 	"github.com/giantswarm/mcp-oauth/security"
 	"github.com/giantswarm/mcp-oauth/storage"
@@ -55,6 +56,23 @@ type Config struct {
 	// ValkeyKeyPrefix is an optional key namespace prefix (default: "mcp:").
 	ValkeyKeyPrefix string
 
+	// Provider selects the upstream identity provider: [ProviderDex] (default)
+	// or [ProviderGoogle]. Read from MCP_OAUTH_PROVIDER.
+	Provider string
+
+	// RedirectURL is the callback URL registered at the identity provider,
+	// e.g. "https://mcp.example.com/oauth/callback". Read from
+	// OAUTH_REDIRECT_URL, falling back to the legacy DEX_REDIRECT_URL.
+	RedirectURL string
+
+	// GoogleClientID is the OAuth client ID of the Google Cloud OAuth client
+	// (provider "google").
+	GoogleClientID string
+
+	// GoogleClientSecret is the OAuth client secret of the Google Cloud OAuth
+	// client (provider "google").
+	GoogleClientSecret string
+
 	// DexIssuerURL is the Dex OIDC issuer, e.g. "https://dex.example.com".
 	DexIssuerURL string
 
@@ -64,14 +82,11 @@ type Config struct {
 	// DexClientSecret is the OAuth client secret registered in Dex.
 	DexClientSecret string
 
-	// DexRedirectURL is the callback URL registered in Dex,
-	// e.g. "https://mcp.example.com/oauth/callback".
-	DexRedirectURL string
-
 	// TrustedAudiences lists OAuth client IDs whose tokens are accepted for SSO.
 	// When an upstream aggregator (like muster) forwards a user's ID token,
 	// mcp-prometheus accepts it if the token's audience matches any entry here.
-	// Tokens must still be from the configured issuer (Dex) and cryptographically valid.
+	// Tokens must still be from the configured provider's issuer (Dex or
+	// Google) and cryptographically valid.
 	TrustedAudiences []string
 
 	// AllowPrivateURLs permits OIDC discovery against Dex instances whose hostname
@@ -82,6 +97,7 @@ type Config struct {
 	//
 	// Set MCP_OAUTH_ALLOW_PRIVATE_URLS=true only in trusted internal environments
 	// where the Dex issuer URL uses internal DNS. TLS verification is still enforced.
+	// Dex only; Google's endpoints are public.
 	AllowPrivateURLs bool
 
 	// DexCAFile is the path to a PEM-encoded CA certificate file used to verify
@@ -90,9 +106,26 @@ type Config struct {
 	// clusters). The pool is passed explicitly to the Dex provider client, the
 	// forwarded-ID-token JWKS validation, and trusted-issuer JWKS clients —
 	// mcp-oauth does not read a CA installed on http.DefaultTransport.
-	// Empty means the system trust store alone is used.
+	// Empty means the system trust store alone is used. Dex only.
 	DexCAFile string
 }
+
+// Supported values for [Config.Provider] / MCP_OAUTH_PROVIDER.
+const (
+	// ProviderDex uses a Dex OIDC issuer (DEX_ISSUER_URL, DEX_CLIENT_ID,
+	// DEX_CLIENT_SECRET). Default.
+	ProviderDex = "dex"
+
+	// ProviderGoogle uses Google as the OAuth 2.0 / OIDC provider
+	// (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET).
+	ProviderGoogle = "google"
+)
+
+// googleScopes are requested from Google. Google ID tokens carry no groups
+// claim, so tenancy modes that need groups (grafana-organization, static
+// group map) cannot resolve tenants for Google users; use tenancy mode
+// "none" or a static all-users tenant list with this provider.
+var googleScopes = []string{"openid", "email", "profile"}
 
 // envTrue is the string value that enables a boolean env var.
 const envTrue = "true"
@@ -111,12 +144,23 @@ func ConfigFromEnv() Config {
 		ValkeyPassword:          os.Getenv("VALKEY_PASSWORD"),
 		ValkeyTLS:               os.Getenv("VALKEY_TLS_ENABLED") == envTrue,
 		ValkeyKeyPrefix:         os.Getenv("VALKEY_KEY_PREFIX"),
+		Provider:                strings.ToLower(strings.TrimSpace(os.Getenv("MCP_OAUTH_PROVIDER"))),
+		RedirectURL:             os.Getenv("OAUTH_REDIRECT_URL"),
+		GoogleClientID:          os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:      os.Getenv("GOOGLE_CLIENT_SECRET"),
 		DexIssuerURL:            os.Getenv("DEX_ISSUER_URL"),
 		DexClientID:             os.Getenv("DEX_CLIENT_ID"),
 		DexClientSecret:         os.Getenv("DEX_CLIENT_SECRET"),
-		DexRedirectURL:          os.Getenv("DEX_REDIRECT_URL"),
 		AllowPrivateURLs:        os.Getenv("MCP_OAUTH_ALLOW_PRIVATE_URLS") == envTrue,
 		DexCAFile:               os.Getenv("DEX_CA_FILE"),
+	}
+	if cfg.Provider == "" {
+		cfg.Provider = ProviderDex
+	}
+	if cfg.RedirectURL == "" {
+		// Legacy name from the Dex-only days; still honoured so existing
+		// deployments keep working.
+		cfg.RedirectURL = os.Getenv("DEX_REDIRECT_URL")
 	}
 	if v := os.Getenv("OAUTH_TRUSTED_AUDIENCES"); v != "" {
 		for a := range strings.SplitSeq(v, ",") {
@@ -135,18 +179,44 @@ func NewHandler(ctx context.Context, cfg Config, logger *slog.Logger) (*handler.
 	if cfg.Issuer == "" {
 		return nil, nil, fmt.Errorf("oauth: MCP_OAUTH_ISSUER must be set")
 	}
-	if cfg.DexIssuerURL == "" || cfg.DexClientID == "" || cfg.DexClientSecret == "" {
-		return nil, nil, fmt.Errorf("oauth: DEX_ISSUER_URL, DEX_CLIENT_ID, DEX_CLIENT_SECRET must all be set")
+	if cfg.RedirectURL == "" {
+		return nil, nil, fmt.Errorf("oauth: OAUTH_REDIRECT_URL (or legacy DEX_REDIRECT_URL) must be set")
 	}
-	if cfg.DexRedirectURL == "" {
-		return nil, nil, fmt.Errorf("oauth: DEX_REDIRECT_URL must be set")
+
+	var (
+		provider providers.Provider
+		rootCAs  *x509.CertPool
+		err      error
+	)
+	switch cfg.Provider {
+	case "", ProviderDex:
+		provider, rootCAs, err = newDexProvider(cfg, logger)
+	case ProviderGoogle:
+		provider, err = newGoogleProvider(cfg, logger)
+	default:
+		return nil, nil, fmt.Errorf("oauth: unsupported MCP_OAUTH_PROVIDER %q (supported: %s, %s)",
+			cfg.Provider, ProviderDex, ProviderGoogle)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return newHandlerWithProvider(ctx, provider, cfg, rootCAs, logger)
+}
+
+// newDexProvider validates the DEX_* configuration and builds the Dex OIDC
+// provider. It also returns the CA pool loaded from DEX_CA_FILE (nil = system
+// trust store) so the caller can hand it to the JWKS validation path.
+func newDexProvider(cfg Config, logger *slog.Logger) (providers.Provider, *x509.CertPool, error) {
+	if cfg.DexIssuerURL == "" || cfg.DexClientID == "" || cfg.DexClientSecret == "" {
+		return nil, nil, fmt.Errorf("oauth: DEX_ISSUER_URL, DEX_CLIENT_ID, DEX_CLIENT_SECRET must all be set for MCP_OAUTH_PROVIDER=%s", ProviderDex)
 	}
 
 	dexCfg := &dex.Config{
 		IssuerURL:    cfg.DexIssuerURL,
 		ClientID:     cfg.DexClientID,
 		ClientSecret: cfg.DexClientSecret,
-		RedirectURL:  cfg.DexRedirectURL,
+		RedirectURL:  cfg.RedirectURL,
 		// Request groups so the tenant resolver can match GrafanaOrganization RBAC.
 		Scopes: []string{"openid", "profile", "email", "groups", "offline_access"},
 	}
@@ -172,8 +242,36 @@ func NewHandler(ctx context.Context, cfg Config, logger *slog.Logger) (*handler.
 	if err != nil {
 		return nil, nil, fmt.Errorf("oauth: create Dex provider: %w", err)
 	}
+	logger.Info("Using Dex OIDC provider", "issuer", cfg.DexIssuerURL)
+	return provider, rootCAs, nil
+}
 
-	return newHandlerWithProvider(ctx, provider, cfg, rootCAs, logger)
+// newGoogleProvider validates the GOOGLE_* configuration and builds the Google
+// provider. Google's discovery, token and JWKS endpoints are public and served
+// with publicly trusted certificates, so DEX_CA_FILE and
+// MCP_OAUTH_ALLOW_PRIVATE_URLS do not apply and are ignored with a warning.
+func newGoogleProvider(cfg Config, logger *slog.Logger) (providers.Provider, error) {
+	if cfg.GoogleClientID == "" || cfg.GoogleClientSecret == "" {
+		return nil, fmt.Errorf("oauth: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set for MCP_OAUTH_PROVIDER=%s", ProviderGoogle)
+	}
+	if cfg.DexCAFile != "" {
+		logger.Warn("DEX_CA_FILE is ignored for the Google provider (Google endpoints use public CAs)", "caFile", cfg.DexCAFile)
+	}
+	if cfg.AllowPrivateURLs {
+		logger.Warn("MCP_OAUTH_ALLOW_PRIVATE_URLS is ignored for the Google provider (Google endpoints are public)")
+	}
+
+	provider, err := google.NewProvider(&google.Config{
+		ClientID:     cfg.GoogleClientID,
+		ClientSecret: cfg.GoogleClientSecret,
+		RedirectURL:  cfg.RedirectURL,
+		Scopes:       googleScopes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("oauth: create Google provider: %w", err)
+	}
+	logger.Info("Using Google OAuth provider")
+	return provider, nil
 }
 
 // loadRootCAs builds a certificate pool from the system pool plus the

@@ -90,8 +90,12 @@ Kubernetes: `>=1.25.0-0`
 | app.server.debug | bool | `false` |  |
 | app.server.metricsAddr | string | `":9091"` |  |
 | app.oauth.enabled | bool | `false` |  |
+| app.oauth.provider | string | `"dex"` |  |
+| app.oauth.redirectURL | string | `""` |  |
+| app.oauth.google.clientID | string | `""` |  |
 | app.oauth.existingSecret | string | `""` |  |
 | app.oauth.dexClientSecret | string | `""` |  |
+| app.oauth.googleClientSecret | string | `""` |  |
 | app.oauth.encryptionKey | string | `""` |  |
 | app.oauth.allowPublicRegistration | bool | `false` |  |
 | app.oauth.allowPrivateURLs | bool | `false` |  |

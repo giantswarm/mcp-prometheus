@@ -9,15 +9,18 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/giantswarm/mcp-oauth/providers/mock"
 )
 
 const (
-	testSecret    = "secret"
-	testDexIssuer = "https://dex.example.com"
-	testMCPIssuer = "https://mcp.example.com"
+	testSecret         = "secret"
+	testDexIssuer      = "https://dex.example.com"
+	testMCPIssuer      = "https://mcp.example.com"
+	testRedirectURL    = "https://mcp.example.com/oauth/callback"
+	testGoogleClientID = "1234.apps.googleusercontent.com"
 )
 
 func TestConfigFromEnvDefaults(t *testing.T) {
@@ -31,12 +34,19 @@ func TestConfigFromEnvDefaults(t *testing.T) {
 		"OAUTH_STORAGE", "VALKEY_URL", "VALKEY_PASSWORD",
 		"VALKEY_TLS_ENABLED", "VALKEY_KEY_PREFIX",
 		"DEX_ISSUER_URL", "DEX_CLIENT_ID", "DEX_CLIENT_SECRET", "DEX_REDIRECT_URL",
+		"MCP_OAUTH_PROVIDER", "OAUTH_REDIRECT_URL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
 	} {
 		t.Setenv(key, "")
 	}
 
 	cfg := ConfigFromEnv()
 
+	if cfg.Provider != ProviderDex {
+		t.Errorf("expected Provider %q by default, got %q", ProviderDex, cfg.Provider)
+	}
+	if cfg.RedirectURL != "" {
+		t.Errorf("expected empty RedirectURL by default, got %q", cfg.RedirectURL)
+	}
 	if cfg.StorageType != "" {
 		t.Errorf("expected empty StorageType by default, got %q", cfg.StorageType)
 	}
@@ -64,6 +74,8 @@ func TestConfigFromEnvReadsValues(t *testing.T) {
 	t.Setenv("DEX_CLIENT_ID", "mcp-prometheus")
 	t.Setenv("DEX_CLIENT_SECRET", "dexsecret")
 	t.Setenv("DEX_REDIRECT_URL", "https://app.example.com/oauth/callback")
+	t.Setenv("OAUTH_REDIRECT_URL", "")
+	t.Setenv("MCP_OAUTH_PROVIDER", "")
 
 	cfg := ConfigFromEnv()
 
@@ -81,7 +93,9 @@ func TestConfigFromEnvReadsValues(t *testing.T) {
 		{"DexIssuerURL", cfg.DexIssuerURL, testDexIssuer},
 		{"DexClientID", cfg.DexClientID, "mcp-prometheus"},
 		{"DexClientSecret", cfg.DexClientSecret, "dexsecret"},
-		{"DexRedirectURL", cfg.DexRedirectURL, "https://app.example.com/oauth/callback"},
+		// Legacy DEX_REDIRECT_URL is honoured when OAUTH_REDIRECT_URL is unset.
+		{"RedirectURL", cfg.RedirectURL, "https://app.example.com/oauth/callback"},
+		{"Provider", cfg.Provider, ProviderDex},
 	}
 	for _, c := range checks {
 		if c.got != c.want {
@@ -105,14 +119,109 @@ func TestConfigFromEnvAllowPrivateURLs(t *testing.T) {
 	}
 }
 
+func TestConfigFromEnvGoogleProvider(t *testing.T) {
+	t.Setenv("MCP_OAUTH_PROVIDER", " Google ") // normalised: trimmed + lower-cased
+	t.Setenv("GOOGLE_CLIENT_ID", testGoogleClientID)
+	t.Setenv("GOOGLE_CLIENT_SECRET", testSecret)
+	t.Setenv("OAUTH_REDIRECT_URL", testRedirectURL)
+	t.Setenv("DEX_REDIRECT_URL", "https://legacy.example.com/oauth/callback")
+
+	cfg := ConfigFromEnv()
+
+	if cfg.Provider != ProviderGoogle {
+		t.Errorf("Provider: got %q, want %q", cfg.Provider, ProviderGoogle)
+	}
+	if cfg.GoogleClientID != testGoogleClientID {
+		t.Errorf("GoogleClientID: got %q", cfg.GoogleClientID)
+	}
+	if cfg.GoogleClientSecret != testSecret {
+		t.Errorf("GoogleClientSecret: got %q", cfg.GoogleClientSecret)
+	}
+	// OAUTH_REDIRECT_URL takes precedence over the legacy DEX_REDIRECT_URL.
+	if cfg.RedirectURL != testRedirectURL {
+		t.Errorf("RedirectURL: got %q, want %q", cfg.RedirectURL, testRedirectURL)
+	}
+}
+
 // --- NewHandler validation errors (no Dex/network required) ---
+
+func TestNewHandlerUnknownProvider(t *testing.T) {
+	cfg := Config{
+		Issuer:      testMCPIssuer,
+		RedirectURL: testRedirectURL,
+		Provider:    "okta",
+	}
+	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
+	if err == nil {
+		t.Fatal("expected error for unknown provider")
+	}
+	if !strings.Contains(err.Error(), "unsupported MCP_OAUTH_PROVIDER") {
+		t.Errorf("error should name the env var, got: %v", err)
+	}
+}
+
+func TestNewHandlerGoogleMissingClientID(t *testing.T) {
+	cfg := Config{
+		Issuer:             testMCPIssuer,
+		RedirectURL:        testRedirectURL,
+		Provider:           ProviderGoogle,
+		GoogleClientSecret: testSecret,
+	}
+	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
+	if err == nil {
+		t.Fatal("expected error when GOOGLE_CLIENT_ID is empty")
+	}
+	if !strings.Contains(err.Error(), "GOOGLE_CLIENT_ID") {
+		t.Errorf("error should name GOOGLE_CLIENT_ID, got: %v", err)
+	}
+}
+
+func TestNewHandlerGoogleMissingClientSecret(t *testing.T) {
+	cfg := Config{
+		Issuer:         testMCPIssuer,
+		RedirectURL:    testRedirectURL,
+		Provider:       ProviderGoogle,
+		GoogleClientID: testGoogleClientID,
+	}
+	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
+	if err == nil {
+		t.Fatal("expected error when GOOGLE_CLIENT_SECRET is empty")
+	}
+	if !strings.Contains(err.Error(), "GOOGLE_CLIENT_SECRET") {
+		t.Errorf("error should name GOOGLE_CLIENT_SECRET, got: %v", err)
+	}
+}
+
+// TestNewHandlerGoogleProvider proves the Google path needs none of the DEX_*
+// variables. Google's endpoints are static, so no network access is required
+// to construct the provider or the server.
+func TestNewHandlerGoogleProvider(t *testing.T) {
+	cfg := Config{
+		Issuer:             testMCPIssuer,
+		RedirectURL:        testRedirectURL,
+		Provider:           ProviderGoogle,
+		GoogleClientID:     testGoogleClientID,
+		GoogleClientSecret: testSecret,
+		// DEX_CA_FILE / private URLs are dex-only: they must be ignored, not fatal.
+		DexCAFile:        filepath.Join(t.TempDir(), "absent.crt"),
+		AllowPrivateURLs: true,
+	}
+	h, cleanup, err := NewHandler(context.Background(), cfg, slog.Default())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer cleanup()
+	if h == nil {
+		t.Error("expected non-nil handler")
+	}
+}
 
 func TestNewHandlerMissingIssuer(t *testing.T) {
 	cfg := Config{
 		DexIssuerURL:    testDexIssuer,
 		DexClientID:     "id",
 		DexClientSecret: testSecret,
-		DexRedirectURL:  "https://app.example.com/callback",
+		RedirectURL:     "https://app.example.com/callback",
 	}
 	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
 	if err == nil {
@@ -125,7 +234,7 @@ func TestNewHandlerMissingDexIssuer(t *testing.T) {
 		Issuer:          testMCPIssuer,
 		DexClientID:     "id",
 		DexClientSecret: testSecret,
-		DexRedirectURL:  "https://app.example.com/callback",
+		RedirectURL:     "https://app.example.com/callback",
 	}
 	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
 	if err == nil {
@@ -139,11 +248,11 @@ func TestNewHandlerMissingRedirectURL(t *testing.T) {
 		DexIssuerURL:    testDexIssuer,
 		DexClientID:     "id",
 		DexClientSecret: testSecret,
-		// DexRedirectURL intentionally missing
+		// RedirectURL intentionally missing
 	}
 	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
 	if err == nil {
-		t.Error("expected error when DexRedirectURL is empty")
+		t.Error("expected error when RedirectURL is empty")
 	}
 }
 
@@ -307,7 +416,7 @@ func TestNewHandlerUnreadableDexCAFile(t *testing.T) {
 		DexIssuerURL:    testDexIssuer,
 		DexClientID:     "mcp-prometheus",
 		DexClientSecret: testSecret,
-		DexRedirectURL:  testMCPIssuer + "/oauth/callback",
+		RedirectURL:     testMCPIssuer + "/oauth/callback",
 		DexCAFile:       filepath.Join(t.TempDir(), "absent.crt"),
 	}
 	if _, _, err := NewHandler(t.Context(), cfg, slog.Default()); err == nil {

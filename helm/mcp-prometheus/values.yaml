@@ -147,17 +147,43 @@ app:
 
   # OAuth 2.1 configuration (requires --enable-oauth flag and sse/streamable-http transport)
   oauth:
-    # Enable OAuth 2.1 authentication via Dex OIDC
+    # Enable OAuth 2.1 authentication via the platform identity provider.
     enabled: false
 
+    # Identity provider: dex | google. Rendered as MCP_OAUTH_PROVIDER.
+    #   dex    — Dex OIDC. Set DEX_ISSUER_URL and DEX_CLIENT_ID via app.env,
+    #            the client secret via dexClientSecret (or existingSecret).
+    #   google — Google OAuth. Set google.clientID and googleClientSecret
+    #            (or existingSecret). Google issues no groups claim, so pair it
+    #            with app.tenancy.mode "none" (or "static" with a tenant list).
+    provider: dex
+
+    # Public callback URL of this server, e.g.
+    # https://mcp-prometheus.example.com/oauth/callback. Rendered as
+    # OAUTH_REDIRECT_URL when set. Leave empty to keep providing
+    # DEX_REDIRECT_URL via app.env (legacy name, still honoured).
+    redirectURL: ""
+
+    # Google OAuth client (provider: google). The client ID is not secret and is
+    # rendered as the GOOGLE_CLIENT_ID env var.
+    google:
+      clientID: ""
+
     # Reference an existing Secret instead of creating one.
-    # When set, app.oauth.dexClientSecret and app.oauth.encryptionKey are ignored.
-    # The Secret must contain the keys: DEX_CLIENT_SECRET, MCP_OAUTH_ENCRYPTION_KEY
-    # and optionally VALKEY_PASSWORD.
+    # When set, app.oauth.dexClientSecret, app.oauth.googleClientSecret and
+    # app.oauth.encryptionKey are ignored. The Secret must contain the keys:
+    #   DEX_CLIENT_SECRET     (provider dex)    or
+    #   GOOGLE_CLIENT_SECRET  (provider google),
+    #   MCP_OAUTH_ENCRYPTION_KEY, and optionally VALKEY_PASSWORD.
     existingSecret: ""
 
-    # Dex OAuth client secret (stored in a K8s Secret)
+    # Dex OAuth client secret (provider: dex; stored in a chart-created Secret
+    # under the key DEX_CLIENT_SECRET)
     dexClientSecret: ""
+
+    # Google OAuth client secret (provider: google; stored in a chart-created
+    # Secret under the key GOOGLE_CLIENT_SECRET)
+    googleClientSecret: ""
 
     # AES-256-GCM encryption key for token storage (hex-encoded 32 bytes).
     # Generate with: openssl rand -hex 32
@@ -202,7 +228,7 @@ app:
     # How it works:
     #   - When a trusted audience is detected, the token is validated via JWT/JWKS
     #   - The IdP's JWKS endpoint is fetched to verify the token signature
-    #   - Tokens MUST still be from the configured issuer (Dex)
+    #   - Tokens MUST still be from the configured provider's issuer (Dex or Google)
     #   - Only explicitly listed client IDs are trusted
     #
     # Example: ["muster-client", "my-aggregator-client"]
@@ -214,6 +240,9 @@ app:
     # Resolution mode.
     #   grafana-organization — read GrafanaOrganization CRDs from Kubernetes (default).
     #   static               — fixed tenant list or group→tenants map from config.
+    #   none                 — single-tenant Prometheus: OAuth authenticates the
+    #                          caller, no tenant header is injected (an explicit
+    #                          org_id or PROMETHEUS_ORGID passes through verbatim).
     mode: "grafana-organization"
 
     static:
@@ -269,10 +298,12 @@ app:
     #   value: "https://mcp-prometheus.example.com"
     # - name: OAUTH_STORAGE
     #   value: "memory"
+    # Provider dex (app.oauth.provider: dex):
     # - name: DEX_ISSUER_URL
     #   value: "https://dex.example.com"
     # - name: DEX_CLIENT_ID
     #   value: "mcp-prometheus"
+    # Callback URL: prefer app.oauth.redirectURL; the legacy env var still works:
     # - name: DEX_REDIRECT_URL
     #   value: "https://mcp-prometheus.example.com/oauth/callback"
 

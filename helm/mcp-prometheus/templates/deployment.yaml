@@ -1,4 +1,5 @@
 {{- $hasDexCA := and .Values.app.oauth.enabled .Values.app.oauth.dexCASecret.name -}}
+{{- $oauthProvider := include "mcp-prometheus.oauthProvider" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -52,7 +53,7 @@ spec:
             - --metrics-addr={{ if .Values.monitoring.enabled }}{{ .Values.app.server.metricsAddr }}{{ end }}
             {{- if .Values.app.oauth.enabled }}
             - --enable-oauth
-            - --tenancy-mode={{ .Values.app.tenancy.mode | default "grafana-organization" }}
+            - --tenancy-mode={{ include "mcp-prometheus.tenancyMode" . }}
             {{- if .Values.app.tenancy.static.tenants }}
             - --static-tenants={{ .Values.app.tenancy.static.tenants }}
             {{- end }}
@@ -144,6 +145,16 @@ spec:
           {{- if or .Values.app.env .Values.app.oauth.enabled $hasStaticGroupMap }}
           env:
             {{- if .Values.app.oauth.enabled }}
+            - name: MCP_OAUTH_PROVIDER
+              value: {{ $oauthProvider | quote }}
+            {{- if .Values.app.oauth.redirectURL }}
+            - name: OAUTH_REDIRECT_URL
+              value: {{ .Values.app.oauth.redirectURL | quote }}
+            {{- end }}
+            {{- if .Values.app.oauth.google.clientID }}
+            - name: GOOGLE_CLIENT_ID
+              value: {{ .Values.app.oauth.google.clientID | quote }}
+            {{- end }}
             - name: MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION
               value: {{ .Values.app.oauth.allowPublicRegistration | quote }}
             - name: MCP_OAUTH_ALLOW_PRIVATE_URLS

@@ -73,7 +73,9 @@ func WithOAuthEnabled(enabled bool) ServerOption {
 }
 
 // WithTenancyResolver attaches a tenancy resolver used by tools to map
-// authenticated user groups to Mimir X-Scope-OrgID values.
+// authenticated user groups to Mimir X-Scope-OrgID values. A nil resolver is
+// valid (tenancy mode "none"): tools then pass explicit org IDs through
+// verbatim and inject no tenant header.
 func WithTenancyResolver(r TenancyResolver) ServerOption {
 	return func(sc *ServerContext) {
 		sc.tenancyResolver = r
