@@ -10,7 +10,7 @@ Deployed in-cluster at Giant Swarm to give AI assistants authenticated, multi-te
 MCP Prometheus exposes 18 read-only MCP tools that wrap the Prometheus HTTP API:
 instant and range PromQL queries, metric/label/series discovery, target and runtime information, TSDB stats, alerting rules, and exemplars.
 
-When deployed with OAuth enabled it acts as a full **OAuth 2.1 Authorization Server** (backed by Dex/OIDC),
+When deployed with OAuth enabled it acts as a full **OAuth 2.1 Authorization Server** (backed by Dex/OIDC or Google),
 so MCP clients authenticate with the server before any tool call.
 The server then resolves the authenticated user's Mimir tenant IDs and enforces them on every query.
 
@@ -111,8 +111,10 @@ All configuration is via environment variables.
 |---|---|---|
 | `MCP_OAUTH_ISSUER` | **required** | Public base URL of this server (e.g. `https://mcp.example.com`) |
 | `MCP_OAUTH_ENCRYPTION_KEY` | — | 32-byte base64 AES-256-GCM key for token encryption (`openssl rand -base64 32`) |
+| `MCP_OAUTH_PROVIDER` | `dex` | Identity provider: `dex` or `google` (see the provider tables below) |
+| `OAUTH_REDIRECT_URL` | **required** | Callback URL registered at the provider (e.g. `https://mcp.example.com/oauth/callback`). The legacy `DEX_REDIRECT_URL` is still honoured when this is unset |
 | `MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION` | `false` | Allow unauthenticated dynamic client registration (dev/MCP Inspector only) |
-| `MCP_OAUTH_ALLOW_PRIVATE_URLS` | `false` | Allow OIDC discovery against Dex on private/internal IPs (see [below](#allow-private-urls)) |
+| `MCP_OAUTH_ALLOW_PRIVATE_URLS` | `false` | Allow OIDC discovery against Dex on private/internal IPs (see [below](#allow-private-urls)); `dex` only |
 | `OAUTH_TRUSTED_AUDIENCES` | — | Comma-separated client IDs trusted for SSO token forwarding |
 | `OAUTH_STORAGE` | `memory` | Token storage: `memory` or `valkey` |
 | `VALKEY_URL` | — | Valkey/Redis address (required when `OAUTH_STORAGE=valkey`) |
@@ -120,21 +122,35 @@ All configuration is via environment variables.
 | `VALKEY_TLS_ENABLED` | `false` | Enable TLS for Valkey |
 | `VALKEY_KEY_PREFIX` | `mcp:` | Key namespace prefix |
 
-### Dex OIDC provider
+### Dex OIDC provider (`MCP_OAUTH_PROVIDER=dex`)
 
 | Variable | Default | Description |
 |---|---|---|
 | `DEX_ISSUER_URL` | **required** | Dex issuer URL (e.g. `https://dex.mc.example.io`) |
 | `DEX_CLIENT_ID` | **required** | OAuth client ID registered in Dex |
 | `DEX_CLIENT_SECRET` | **required** | OAuth client secret |
-| `DEX_REDIRECT_URL` | **required** | Callback URL (e.g. `https://mcp.example.com/oauth/callback`) |
+| `DEX_REDIRECT_URL` | — | Legacy alias of `OAUTH_REDIRECT_URL`; used when the latter is unset |
 | `DEX_CA_FILE` | — | PEM CA file verifying TLS for Dex and JWKS endpoints (private-CA installations). Added on top of the system trust store |
+
+### Google provider (`MCP_OAUTH_PROVIDER=google`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `GOOGLE_CLIENT_ID` | **required** | OAuth client ID of the Google Cloud OAuth client (`….apps.googleusercontent.com`) |
+| `GOOGLE_CLIENT_SECRET` | **required** | OAuth client secret of that client |
+
+Google's discovery, token and JWKS endpoints are public, so `DEX_CA_FILE` and
+`MCP_OAUTH_ALLOW_PRIVATE_URLS` do not apply (they are ignored with a warning).
+Google ID tokens carry no `groups` claim: pair this provider with
+[tenancy mode `none`](#none-mode-single-tenant-prometheus) or a static all-users tenant list.
 
 ### Tenancy
 
 | Variable | Default | Description |
 |---|---|---|
 | `TENANCY_STATIC_GROUP_MAP` | — | JSON map of Dex group → list of Mimir tenant IDs (static mode) |
+
+Tenancy mode is a flag: `--tenancy-mode grafana-organization|static|none` (see [Multi-tenancy](#multi-tenancy)).
 
 ### Observability
 
@@ -169,7 +185,10 @@ OAuth requires `sse` or `streamable-http`.
 
 ## OAuth 2.1 authentication
 
-MCP Prometheus implements OAuth 2.1 ([RFC 9700][rfc9700]) using [mcp-oauth][mcp-oauth] and [Dex][dex] as the OIDC identity provider.
+MCP Prometheus implements OAuth 2.1 ([RFC 9700][rfc9700]) using [mcp-oauth][mcp-oauth] with the platform's
+identity provider upstream: [Dex][dex] (default) or Google, selected with `MCP_OAUTH_PROVIDER`.
+The flow, endpoints and token handling are identical for both; only the upstream login and the
+provider-specific environment variables differ.
 
 [rfc9700]: https://datatracker.ietf.org/doc/html/rfc9700
 [mcp-oauth]: https://github.com/giantswarm/mcp-oauth
@@ -181,8 +200,8 @@ MCP Prometheus implements OAuth 2.1 ([RFC 9700][rfc9700]) using [mcp-oauth][mcp-
 |---|---|---|
 | `/.well-known/oauth-authorization-server` | GET | OAuth server metadata (RFC 8414) |
 | `/.well-known/protected-resources` | GET | Protected resource metadata |
-| `/oauth/authorize` | GET | Authorization endpoint (redirects to Dex) |
-| `/oauth/callback` | GET | Dex callback |
+| `/oauth/authorize` | GET | Authorization endpoint (redirects to the identity provider) |
+| `/oauth/callback` | GET | Identity provider callback (`OAUTH_REDIRECT_URL`) |
 | `/oauth/token` | POST | Token exchange |
 | `/oauth/register` | POST | Dynamic client registration (RFC 7591) |
 | `/oauth/revoke` | POST | Token revocation |
@@ -274,7 +293,7 @@ app:
 ### SSO token forwarding (trustedAudiences)
 
 When users connect through an upstream MCP aggregator (e.g. [muster][muster]) that has already authenticated them,
-the aggregator can forward the user's Dex ID token directly instead of starting a new OAuth flow.
+the aggregator can forward the user's ID token from the platform IdP directly instead of starting a new OAuth flow.
 
 [muster]: https://github.com/giantswarm/muster
 
@@ -286,10 +305,11 @@ OAUTH_TRUSTED_AUDIENCES=muster-client,my-aggregator
 
 mcp-prometheus will:
 1. Detect that the incoming token's audience matches a trusted client ID
-2. Verify the token signature against Dex's JWKS endpoint
+2. Verify the token signature against the provider's JWKS endpoint (Dex or Google)
 3. Accept the token and proceed with tenant resolution
 
-Tokens **must** still originate from the configured Dex issuer.
+Tokens **must** still originate from the configured provider's issuer. With the Google
+provider, list the platform's Google OAuth client ID (the one muster logs users in with) here.
 
 ---
 
@@ -299,7 +319,8 @@ When OAuth is enabled, every tool call is scoped to the authenticated user's all
 The user can pass an explicit `org_id` parameter; the server validates it against their allowed tenants.
 If no `org_id` is given, all allowed tenants are injected as a Mimir pipe-separated multi-tenant selector.
 
-Two resolution modes are available, selected with `--tenancy-mode` (or `app.tenancy.mode` in Helm).
+Three resolution modes are available, selected with `--tenancy-mode` (or `app.tenancy.mode` in Helm):
+`grafana-organization` (default), `static`, and `none`.
 
 ### GrafanaOrganization mode (default)
 
@@ -374,6 +395,26 @@ app:
 ```
 
 The user's allowed tenants are the union of all tenants from their Dex groups.
+
+### None mode (single-tenant Prometheus)
+
+**`--tenancy-mode none`**
+
+For a plain, single-tenant Prometheus (no Mimir, no `X-Scope-OrgID`). OAuth still
+authenticates every caller — unauthenticated requests are rejected, forwarded tokens are
+validated and the identity is available for auditing — but no tenant is derived from the
+identity and no tenant header is injected. An explicit `org_id` tool parameter or
+`PROMETHEUS_ORGID` passes through verbatim. The chart creates no `ClusterRole` in this mode.
+
+This is the mode to use with the Google provider (Google tokens have no `groups` claim)
+and whenever mcp-prometheus sits behind [muster][muster] in front of a single Prometheus.
+
+Helm:
+```yaml
+app:
+  tenancy:
+    mode: none
+```
 
 ---
 
@@ -475,6 +516,34 @@ app:
       value: "https://mcp-prometheus.mc.example.io/oauth/callback"
     - name: PROMETHEUS_URL
       value: "http://mimir-gateway.monitoring:8080/prometheus"
+```
+
+### Google provider + single-tenant Prometheus behind muster
+
+The platform IdP is Google, muster forwards the user's Google ID token
+(`auth.forwardToken: true`), and there are no Mimir tenants to resolve.
+
+```yaml
+app:
+  oauth:
+    enabled: true
+    provider: google
+    redirectURL: "https://mcp-prometheus.example.io/oauth/callback"
+    google:
+      clientID: "1234567890-abc.apps.googleusercontent.com"   # this server's OAuth client
+    googleClientSecret: "..."   # or existingSecret with key GOOGLE_CLIENT_SECRET
+    encryptionKey: "..."        # openssl rand -base64 32
+    trustedAudiences:
+      - "1234567890-platform.apps.googleusercontent.com"       # the platform client muster logs in with
+
+  tenancy:
+    mode: none
+
+  env:
+    - name: MCP_OAUTH_ISSUER
+      value: "https://mcp-prometheus.example.io"
+    - name: PROMETHEUS_URL
+      value: "http://prometheus-operated.monitoring:9090"
 ```
 
 ### Production with OAuth + static group mapping

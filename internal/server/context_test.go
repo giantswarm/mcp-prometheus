@@ -48,6 +48,23 @@ func TestWithTenancyResolver(t *testing.T) {
 	}
 }
 
+func TestWithTenancyResolverNil(t *testing.T) {
+	// Tenancy mode "none" hands a nil resolver to the option; OAuth stays on.
+	sc, err := NewServerContext(context.Background(),
+		WithOAuthEnabled(true),
+		WithTenancyResolver(nil),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sc.IsOAuthEnabled() {
+		t.Error("expected IsOAuthEnabled() == true")
+	}
+	if sc.TenancyResolver() != nil {
+		t.Errorf("expected TenancyResolver() == nil, got %v", sc.TenancyResolver())
+	}
+}
+
 func TestTenancyResolverNilByDefault(t *testing.T) {
 	sc, err := NewServerContext(context.Background())
 	if err != nil {

@@ -68,3 +68,22 @@ Create the image path
 {{- define "mcp-prometheus.image" -}}
 {{- printf "%s/%s:%s" .Values.image.registry .Values.image.repository (.Values.image.tag | default .Chart.AppVersion) }}
 {{- end }}
+
+{{/*
+OAuth identity provider (app.oauth.provider), defaulting to dex and rejecting
+anything the binary does not implement so a typo fails at render time.
+*/}}
+{{- define "mcp-prometheus.oauthProvider" -}}
+{{- $p := .Values.app.oauth.provider | default "dex" -}}
+{{- if not (has $p (list "dex" "google")) -}}
+{{- fail (printf "app.oauth.provider must be one of: dex, google (got %q)" $p) -}}
+{{- end -}}
+{{- $p -}}
+{{- end }}
+
+{{/*
+Effective tenancy mode (app.tenancy.mode), defaulting to grafana-organization.
+*/}}
+{{- define "mcp-prometheus.tenancyMode" -}}
+{{- .Values.app.tenancy.mode | default "grafana-organization" -}}
+{{- end }}

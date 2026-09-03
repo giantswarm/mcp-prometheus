@@ -1,4 +1,4 @@
-{{- $needsK8s := and .Values.app.oauth.enabled (ne .Values.app.tenancy.mode "static") -}}
+{{- $needsK8s := and .Values.app.oauth.enabled (eq (include "mcp-prometheus.tenancyMode" .) "grafana-organization") -}}
 {{- if and .Values.serviceAccount.create $needsK8s -}}
 {{/*
 ClusterRole granting the mcp-prometheus ServiceAccount read access to
@@ -6,8 +6,8 @@ GrafanaOrganization CRDs so the tenancy resolver can map authenticated
 user groups to Mimir tenant IDs.
 
 This resource is only created when OAuth 2.1 is enabled
-(app.oauth.enabled: true), because without OAuth the server does not
-perform tenancy resolution.
+(app.oauth.enabled: true) and app.tenancy.mode is grafana-organization;
+the static and none modes never touch the Kubernetes API.
 */}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

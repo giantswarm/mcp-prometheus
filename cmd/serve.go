@@ -66,17 +66,29 @@ Environment Variables:
 OAuth 2.1 (when --enable-oauth is set):
   MCP_OAUTH_ISSUER              - OAuth issuer URL (required)
   MCP_OAUTH_ENCRYPTION_KEY      - AES-256-GCM key for token encryption (base64, required)
+  MCP_OAUTH_PROVIDER            - Identity provider: dex (default) or google
+  OAUTH_REDIRECT_URL            - OAuth callback URL, e.g. https://mcp.example.com/oauth/callback
+                                  (required; legacy DEX_REDIRECT_URL is still honoured)
+  OAUTH_TRUSTED_AUDIENCES       - Comma-separated client IDs whose forwarded ID tokens are accepted (SSO)
   OAUTH_STORAGE                 - Storage backend: memory (default) or valkey
   VALKEY_URL                    - Valkey connection URL (when OAUTH_STORAGE=valkey)
+
+  Provider dex:
   DEX_ISSUER_URL                - Dex OIDC issuer URL (required)
   DEX_CLIENT_ID                 - Dex OAuth client ID (required)
   DEX_CLIENT_SECRET             - Dex OAuth client secret (required)
-  DEX_REDIRECT_URL              - OAuth redirect URL (required)
   DEX_CA_FILE                   - Optional: PEM CA file for Dex/JWKS TLS verification
                                   (private-CA installations; added to the system pool)
+  MCP_OAUTH_ALLOW_PRIVATE_URLS  - Optional: allow OIDC discovery against private-IP Dex hosts
+
+  Provider google:
+  GOOGLE_CLIENT_ID              - Google OAuth client ID (required)
+  GOOGLE_CLIENT_SECRET          - Google OAuth client secret (required)
 
 Tenancy (when --enable-oauth is set):
-  --tenancy-mode                - grafana-organization (default) or static
+  --tenancy-mode                - grafana-organization (default), static, or none
+                                  (none: single-tenant Prometheus; OAuth authenticates
+                                  the caller, no tenant header is injected)
   --static-tenants              - Comma-separated tenant IDs for all users (static mode)
   TENANCY_STATIC_GROUP_MAP      - JSON map of group→[tenant IDs] for group-mapping (static mode)
 
@@ -91,7 +103,7 @@ they can be provided as parameters to individual tool calls.`,
 
 	// Add flags for configuring the server
 	cmd.Flags().BoolVar(&debugMode, "debug", false, "Enable debug logging (default: false)")
-	cmd.Flags().BoolVar(&enableOAuth, "enable-oauth", false, "Enable OAuth 2.1 authentication (requires MCP_OAUTH_* and DEX_* env vars; sse/streamable-http only)")
+	cmd.Flags().BoolVar(&enableOAuth, "enable-oauth", false, "Enable OAuth 2.1 authentication (requires MCP_OAUTH_* plus the DEX_* or GOOGLE_* env vars of the selected MCP_OAUTH_PROVIDER; sse/streamable-http only)")
 
 	// Transport flags
 	cmd.Flags().StringVar(&transport, "transport", "stdio", "Transport type: stdio, sse, or streamable-http")
@@ -103,7 +115,7 @@ they can be provided as parameters to individual tool calls.`,
 
 	// Tenancy flags (only relevant when --enable-oauth is set)
 	cmd.Flags().StringVar(&tenancyMode, "tenancy-mode", string(tenancy.ModeGrafanaOrganization),
-		"Tenancy resolution mode when OAuth is enabled: grafana-organization or static")
+		"Tenancy resolution mode when OAuth is enabled: grafana-organization, static, or none (single-tenant Prometheus: OAuth authenticates the caller, no tenant header is injected)")
 	cmd.Flags().StringVar(&staticTenants, "static-tenants", "",
 		"Comma-separated Mimir tenant IDs for all authenticated users (--tenancy-mode=static only)")
 

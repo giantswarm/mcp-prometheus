@@ -48,6 +48,24 @@
                         "existingSecret": {
                             "type": "string"
                         },
+                        "google": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "clientID": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "googleClientSecret": {
+                            "type": "string"
+                        },
+                        "provider": {
+                            "type": "string"
+                        },
+                        "redirectURL": {
+                            "type": "string"
+                        },
                         "storage": {
                             "type": "object",
                             "additionalProperties": false,
