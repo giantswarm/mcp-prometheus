@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -83,8 +85,8 @@ func TestInputSchemaValidation_AcceptsKnownProperty(t *testing.T) {
 	defer cleanup()
 
 	resp := dispatchToolCall(t, srv, toolExecuteQuery, map[string]any{
-		paramKeyQuery:    "up",
-		"prometheus_url": mockURL,
+		paramKeyQuery:      "up",
+		paramPrometheusURL: mockURL,
 	})
 
 	jr, ok := resp.(mcp.JSONRPCResponse)
@@ -112,8 +114,7 @@ func TestInputSchemaValidation_AcceptsKnownProperty(t *testing.T) {
 // function the caller must defer.
 func newValidatingServer(t *testing.T) (*mcpserver.MCPServer, string, func()) {
 	t.Helper()
-
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return newValidatingServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == apiQueryPath {
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				respKeyStatus: respValSuccess,
@@ -122,7 +123,15 @@ func newValidatingServer(t *testing.T) (*mcpserver.MCPServer, string, func()) {
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
-	}))
+	})
+}
+
+// newValidatingServerWithHandler is newValidatingServer with a caller-supplied
+// mock Prometheus handler, for tests that need to observe the upstream request.
+func newValidatingServerWithHandler(t *testing.T, handler http.HandlerFunc) (*mcpserver.MCPServer, string, func()) {
+	t.Helper()
+
+	mockServer := httptest.NewServer(handler)
 
 	sc, err := server.NewServerContext(context.Background(),
 		server.WithPrometheusConfig(server.PrometheusConfig{URL: mockServer.URL}),
@@ -166,4 +175,130 @@ func dispatchToolCall(t *testing.T, srv *mcpserver.MCPServer, toolName string, a
 		t.Fatalf("marshal payload: %v", err)
 	}
 	return srv.HandleMessage(context.Background(), raw)
+}
+
+// callToolResult unwraps a tools/call JSON-RPC message into its result.
+func callToolResult(t *testing.T, resp mcp.JSONRPCMessage) *mcp.CallToolResult {
+	t.Helper()
+	jr, ok := resp.(mcp.JSONRPCResponse)
+	if !ok {
+		t.Fatalf("expected JSON-RPC response, got %T", resp)
+	}
+	result, ok := jr.Result.(*mcp.CallToolResult)
+	if !ok {
+		t.Fatalf("expected *mcp.CallToolResult, got %T", jr.Result)
+	}
+	return result
+}
+
+func resultText(result *mcp.CallToolResult) string {
+	if len(result.Content) == 0 {
+		return ""
+	}
+	if tc, ok := result.Content[0].(mcp.TextContent); ok {
+		return tc.Text
+	}
+	return ""
+}
+
+// TestInputSchemaValidation_GetRulesFilters is the regression test for the
+// gazelle symptom: calling get_rules with {"type":"alert"} was rejected by the
+// strict input schema with `<root>: &{Properties:[type]}` because the tool
+// declared no filter parameters at all. The filters must now be part of the
+// schema, pass validation, and reach Prometheus as query parameters — while
+// wrong types and unknown names are still rejected before the handler runs.
+func TestInputSchemaValidation_GetRulesFilters(t *testing.T) {
+	var gotQuery url.Values
+	srv, mockURL, cleanup := newValidatingServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != rulesEndpoint {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		gotQuery = r.URL.Query()
+		emptyRulesResponse(w, r)
+	})
+	defer cleanup()
+
+	t.Run("schema declares the filters", func(t *testing.T) {
+		tool, ok := srv.ListTools()["get_rules"]
+		if !ok {
+			t.Fatal("get_rules is not registered")
+		}
+		props := tool.Tool.InputSchema.Properties
+		for _, name := range []string{paramRuleType, paramRuleName, paramRuleGroup, paramRuleFile, paramExcludeAlerts} {
+			if _, ok := props[name]; !ok {
+				t.Errorf("get_rules input schema lacks property %q", name)
+			}
+		}
+		typeProp, _ := props[paramRuleType].(map[string]any)
+		enum, _ := typeProp["enum"].([]string)
+		if !reflect.DeepEqual(enum, []string{RuleTypeAlert, RuleTypeRecord}) {
+			t.Errorf("type enum = %#v, want [%s %s]", typeProp["enum"], RuleTypeAlert, RuleTypeRecord)
+		}
+	})
+
+	t.Run("filters pass validation and reach Prometheus", func(t *testing.T) {
+		gotQuery = nil
+		result := callToolResult(t, dispatchToolCall(t, srv, "get_rules", map[string]any{
+			paramPrometheusURL: mockURL,
+			paramRuleType:      RuleTypeAlert,
+			paramRuleName:      []any{testRuleName},
+			paramRuleGroup:     []any{testRuleGroup},
+			paramRuleFile:      []any{testRuleFile},
+			paramExcludeAlerts: true,
+		}))
+		if result.IsError {
+			t.Fatalf("well-formed get_rules call must not be rejected; got: %s", resultText(result))
+		}
+		want := url.Values{
+			rulesQueryType:          {RuleTypeAlert},
+			rulesQueryRuleName:      {testRuleName},
+			rulesQueryRuleGroup:     {testRuleGroup},
+			rulesQueryFile:          {testRuleFile},
+			rulesQueryExcludeAlerts: {queryTrue},
+		}
+		if !reflect.DeepEqual(gotQuery, want) {
+			t.Errorf("upstream query\n got: %v\nwant: %v", gotQuery, want)
+		}
+	})
+
+	t.Run("no filters still sends a bare request", func(t *testing.T) {
+		gotQuery = nil
+		result := callToolResult(t, dispatchToolCall(t, srv, "get_rules", map[string]any{
+			paramPrometheusURL: mockURL,
+		}))
+		if result.IsError {
+			t.Fatalf("bare get_rules call must not be rejected; got: %s", resultText(result))
+		}
+		if len(gotQuery) != 0 {
+			t.Errorf("expected no query parameters, got %v", gotQuery)
+		}
+	})
+
+	rejected := []struct {
+		name string
+		args map[string]any
+		want string // substring the validation error must contain
+	}{
+		{"type outside the enum", map[string]any{paramRuleType: testInvalidRuleType}, testInvalidRuleType},
+		{"rule_name as a string", map[string]any{paramRuleName: testRuleName}, paramRuleName},
+		{"exclude_alerts as a string", map[string]any{paramExcludeAlerts: queryTrue}, paramExcludeAlerts},
+		{"unknown property", map[string]any{"rulename": []any{"x"}}, "rulename"},
+	}
+	for _, tc := range rejected {
+		t.Run("rejects "+tc.name, func(t *testing.T) {
+			gotQuery = nil
+			tc.args[paramPrometheusURL] = mockURL
+			result := callToolResult(t, dispatchToolCall(t, srv, "get_rules", tc.args))
+			if !result.IsError {
+				t.Fatalf("expected validation to reject %v", tc.args)
+			}
+			if text := resultText(result); !strings.Contains(text, tc.want) {
+				t.Errorf("validation error should mention %q; got: %s", tc.want, text)
+			}
+			if gotQuery != nil {
+				t.Errorf("rejected call must not reach Prometheus, but it sent %v", gotQuery)
+			}
+		})
+	}
 }

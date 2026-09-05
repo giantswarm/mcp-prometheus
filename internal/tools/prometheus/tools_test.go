@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -16,6 +18,7 @@ import (
 	"github.com/giantswarm/mcp-oauth/providers"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 
 	"github.com/giantswarm/mcp-prometheus/internal/server"
 )
@@ -23,13 +26,21 @@ import (
 const (
 	apiQueryPath = "/api/v1/query"
 
-	respKeyStatus       = "status"
-	respKeyData         = "data"
-	respKeyResult       = "result"
-	respKeyResultType   = "resultType"
-	respValSuccess      = "success"
-	respValVector       = "vector"
-	paramKeyQuery       = "query"
+	respKeyStatus      = "status"
+	respKeyData        = "data"
+	respKeyResult      = "result"
+	respKeyResultType  = "resultType"
+	respValSuccess     = "success"
+	respValVector      = "vector"
+	paramKeyQuery      = "query"
+	paramPrometheusURL = "prometheus_url"
+
+	// get_rules fixtures shared by the client and schema tests.
+	testRuleName        = "MCPKubernetesDown"
+	testRuleGroup       = "mcp-kubernetes"
+	testRuleFile        = "gazelle/agent-platform/mcp-kubernetes"
+	testInvalidRuleType = "alerting"
+	queryTrue           = "true"
 	bodyPrometheusReady = "Prometheus is Ready."
 	readyMsg            = "ready"
 	notReadyMsg         = "not ready"
@@ -876,45 +887,203 @@ func TestTruncateWithAdviceUTF8(t *testing.T) {
 	})
 }
 
-func TestGetRulesSendsNoMatchers(t *testing.T) {
-	// client_golang v1.24 added a `matches` argument to Rules; GetRules passes
-	// nil so that no match[] filter is sent and all rules are returned.
-	var gotMatchers []string
+// newRulesClient starts a mock /api/v1/rules endpoint that records the query
+// string of every request and answers with respond, and returns a Client
+// pointed at it. The caller must call the returned cleanup.
+func newRulesClient(t *testing.T, respond http.HandlerFunc) (*Client, *url.Values, func()) {
+	t.Helper()
+	var got url.Values
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/rules" {
+		if r.URL.Path != rulesEndpoint {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		gotMatchers = r.URL.Query()["match[]"]
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			respKeyStatus: respValSuccess,
-			respKeyData:   map[string]any{"groups": []any{}},
-		})
+		got = r.URL.Query()
+		respond(w, r)
 	}))
-	defer mockServer.Close()
 
-	ctx := context.Background()
-	sc, err := server.NewServerContext(ctx,
+	sc, err := server.NewServerContext(context.Background(),
 		server.WithPrometheusConfig(server.PrometheusConfig{URL: mockServer.URL}),
 		server.WithSlogLogger(discardLogger()),
 	)
 	if err != nil {
+		mockServer.Close()
 		t.Fatalf("Failed to create server context: %v", err)
 	}
-	defer func() { _ = sc.Shutdown() }()
-
 	client, err := NewClient(sc.PrometheusConfig(), sc.Logger())
 	if err != nil {
+		_ = sc.Shutdown()
+		mockServer.Close()
 		t.Fatalf("NewClient: %v", err)
 	}
+	cleanup := func() {
+		_ = sc.Shutdown()
+		mockServer.Close()
+	}
+	return client, &got, cleanup
+}
 
-	if _, err := client.GetRules(ctx); err != nil {
+func emptyRulesResponse(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		respKeyStatus: respValSuccess,
+		respKeyData:   map[string]any{"groups": []any{}},
+	})
+}
+
+// TestGetRulesQueryParams pins the wire mapping of RulesOptions onto the
+// /api/v1/rules query parameters. The zero-value case keeps the historical
+// behaviour: no parameters at all, so every rule group is returned.
+func TestGetRulesQueryParams(t *testing.T) {
+	cases := []struct {
+		name    string
+		options RulesOptions
+		want    url.Values
+	}{
+		{
+			name:    "no options sends no query parameters",
+			options: RulesOptions{},
+			want:    url.Values{},
+		},
+		{
+			name:    "type alert",
+			options: RulesOptions{Type: RuleTypeAlert},
+			want:    url.Values{rulesQueryType: {RuleTypeAlert}},
+		},
+		{
+			name:    "type record",
+			options: RulesOptions{Type: RuleTypeRecord},
+			want:    url.Values{rulesQueryType: {RuleTypeRecord}},
+		},
+		{
+			name:    "rule names repeat rule_name[]",
+			options: RulesOptions{RuleNames: []string{testRuleName, "MCPKubernetesHighErrorRate"}},
+			want:    url.Values{rulesQueryRuleName: {testRuleName, "MCPKubernetesHighErrorRate"}},
+		},
+		{
+			name:    "rule groups and files",
+			options: RulesOptions{RuleGroups: []string{testRuleGroup}, Files: []string{testRuleFile}},
+			want:    url.Values{rulesQueryRuleGroup: {testRuleGroup}, rulesQueryFile: {testRuleFile}},
+		},
+		{
+			name:    "exclude alerts",
+			options: RulesOptions{ExcludeAlerts: true},
+			want:    url.Values{rulesQueryExcludeAlerts: {queryTrue}},
+		},
+		{
+			name: "all filters together",
+			options: RulesOptions{
+				Type:          RuleTypeAlert,
+				RuleNames:     []string{testRuleName},
+				RuleGroups:    []string{testRuleGroup},
+				Files:         []string{"ns"},
+				ExcludeAlerts: true,
+			},
+			want: url.Values{
+				rulesQueryType:          {RuleTypeAlert},
+				rulesQueryRuleName:      {testRuleName},
+				rulesQueryRuleGroup:     {testRuleGroup},
+				rulesQueryFile:          {"ns"},
+				rulesQueryExcludeAlerts: {queryTrue},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client, got, cleanup := newRulesClient(t, emptyRulesResponse)
+			defer cleanup()
+
+			if _, err := client.GetRules(context.Background(), tc.options); err != nil {
+				t.Fatalf("GetRules: %v", err)
+			}
+			if !reflect.DeepEqual(*got, tc.want) {
+				t.Errorf("query params\n got: %v\nwant: %v", *got, tc.want)
+			}
+		})
+	}
+}
+
+// TestGetRulesRejectsInvalidType makes sure a bad type is refused locally
+// instead of being forwarded to the server.
+func TestGetRulesRejectsInvalidType(t *testing.T) {
+	requests := 0
+	client, _, cleanup := newRulesClient(t, func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		emptyRulesResponse(w, r)
+	})
+	defer cleanup()
+
+	_, err := client.GetRules(context.Background(), RulesOptions{Type: testInvalidRuleType})
+	if err == nil {
+		t.Fatalf("expected an error for type %q", testInvalidRuleType)
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("%q", testInvalidRuleType)) || !strings.Contains(err.Error(), RuleTypeAlert) {
+		t.Errorf("error should name the bad value and the accepted ones; got: %v", err)
+	}
+	if requests != 0 {
+		t.Errorf("expected no request to be sent, got %d", requests)
+	}
+}
+
+// TestGetRulesDecodesResult checks the hand-built request still yields the
+// client_golang RulesResult so the handler's %+v rendering is unchanged.
+func TestGetRulesDecodesResult(t *testing.T) {
+	client, _, cleanup := newRulesClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"status":"success","data":{"groups":[{"name":%q,"file":%q,"interval":60,"rules":[{"name":%q,"query":"up == 0","duration":300,"labels":{"team":"bumblebee"},"annotations":{},"alerts":[],"health":"ok","type":"alerting"}]}]}}`,
+			testRuleGroup, testRuleFile, testRuleName)
+	})
+	defer cleanup()
+
+	res, err := client.GetRules(context.Background(), RulesOptions{Type: RuleTypeAlert})
+	if err != nil {
 		t.Fatalf("GetRules: %v", err)
 	}
-	if len(gotMatchers) != 0 {
-		t.Errorf("expected no match[] query params, got %q", gotMatchers)
+	rules, ok := res.(v1.RulesResult)
+	if !ok {
+		t.Fatalf("expected v1.RulesResult, got %T", res)
 	}
+	if len(rules.Groups) != 1 || rules.Groups[0].Name != testRuleGroup {
+		t.Fatalf("unexpected groups: %+v", rules.Groups)
+	}
+	if len(rules.Groups[0].Rules) != 1 {
+		t.Fatalf("expected one rule, got %d", len(rules.Groups[0].Rules))
+	}
+	ar, ok := rules.Groups[0].Rules[0].(v1.AlertingRule)
+	if !ok || ar.Name != testRuleName {
+		t.Fatalf("expected alerting rule %s, got %#v", testRuleName, rules.Groups[0].Rules[0])
+	}
+}
+
+// TestGetRulesSurfacesAPIError pins the error wording for a Prometheus error
+// envelope (the Mimir ruler answers this way when no tenant is set), and for a
+// non-JSON failure.
+func TestGetRulesSurfacesAPIError(t *testing.T) {
+	t.Run("error envelope", func(t *testing.T) {
+		client, _, cleanup := newRulesClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"status":"error","errorType":"bad_data","error":"no valid org id found"}`))
+		})
+		defer cleanup()
+
+		_, err := client.GetRules(context.Background(), RulesOptions{})
+		if err == nil || !strings.Contains(err.Error(), "bad_data: no valid org id found") {
+			t.Fatalf("expected the envelope error to surface as \"bad_data: no valid org id found\", got: %v", err)
+		}
+	})
+	t.Run("plain text 5xx", func(t *testing.T) {
+		client, _, cleanup := newRulesClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte("upstream down"))
+		})
+		defer cleanup()
+
+		_, err := client.GetRules(context.Background(), RulesOptions{})
+		if err == nil || !strings.Contains(err.Error(), "server_error: bad response code 502") {
+			t.Fatalf("expected a server_error with the status code, got: %v", err)
+		}
+	})
 }
 
 // --- resolveTenantOrgID ---
