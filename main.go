@@ -2,14 +2,13 @@ package main
 
 import (
 	"github.com/giantswarm/mcp-prometheus/cmd"
+	"github.com/giantswarm/mcp-prometheus/pkg/project"
 )
 
-// version will be set by goreleaser during build
-var version = "dev"
-
 func main() {
-	// Set the version from build-time variable
-	cmd.SetVersion(version)
+	// The version comes from pkg/project, which the generated Makefile and the
+	// architect-orb go-build job stamp at link time via -X ldflags.
+	cmd.SetVersion(project.Version())
 
 	// Execute the root command
 	cmd.Execute()
