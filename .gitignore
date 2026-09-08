@@ -1,6 +1,14 @@
-# Binary output
+# Build outputs and CI scratch files, all written next to the sources: the
+# devctl Makefile's mcp-prometheus-v<version>-<os>-<arch> and bin-dist/, the
+# architect CI's .ldflags, .platforms and mcp-prometheus-<os>-<arch> (six of
+# them, built concurrently). Untracked, any of these flips Go's VCS stamp to
+# vcs.modified=true and the binaries built after it report vX.Y.Z+dirty
+# (pkg/project reads that stamp when no version ldflag is injected).
 /mcp-prometheus
 /mcp-prometheus-*
+/bin-dist/
+.ldflags
+.platforms
 dist/
 
 # Configuration files
