@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* `get_rules` accepts the `GET /api/v1/rules` filters `type` (`alert`/`record`), `rule_name`, `rule_group`, `file` and `exclude_alerts` (`match[]` is not exposed: the Mimir ruler ignores it). Before, the tool declared no filter parameters, so the strict input schema rejected every call that passed one (`input schema validation failed: <root>: &{Properties:[type]}`).
 * `DEX_CA_FILE` environment variable and `app.oauth.dexCASecret` Helm value: verify TLS for Dex and JWKS endpoints against a private/internal CA (added on top of the system trust store). Required on installations where Dex is served with a certificate from a private CA.
 * `service.appProtocol` Helm value: sets `appProtocol` on the Service's `http` port when non-empty, so `agentgateway` can discover this Service as an MCP backend (e.g. `agentgateway.dev/mcp`). Unset by default; existing installs are unaffected.
 

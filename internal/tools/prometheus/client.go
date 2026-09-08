@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -60,6 +61,7 @@ func (b *bearerTokenRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 // Client wraps the official Prometheus client with logging
 type Client struct {
 	client     v1.API
+	apiClient  api.Client   // same base URL and round trippers as client, for endpoints v1.API does not cover fully
 	httpClient *http.Client // for raw HTTP calls (health/ready endpoints)
 	config     server.PrometheusConfig
 	logger     *slog.Logger
@@ -132,6 +134,7 @@ func NewClient(config server.PrometheusConfig, logger *slog.Logger) (*Client, er
 
 	return &Client{
 		client:     v1.NewAPI(promClient),
+		apiClient:  promClient,
 		httpClient: &http.Client{Transport: roundTripper, Timeout: 10 * time.Second},
 		config:     config,
 		logger:     logger,
@@ -691,23 +694,159 @@ func (c *Client) FindSeries(ctx context.Context, matches []string, options Serie
 	}, nil
 }
 
-// GetRules gets recording and alerting rules
-func (c *Client) GetRules(ctx context.Context) (interface{}, error) {
-	if c.client == nil {
+// Rule types accepted by the "type" filter of GET /api/v1/rules.
+const (
+	RuleTypeAlert  = "alert"
+	RuleTypeRecord = "record"
+)
+
+// rulesEndpoint is the Prometheus HTTP API path for rule groups, and the
+// names of its query parameters.
+const (
+	rulesEndpoint = "/api/v1/rules"
+
+	rulesQueryType          = "type"
+	rulesQueryRuleName      = "rule_name[]"
+	rulesQueryRuleGroup     = "rule_group[]"
+	rulesQueryFile          = "file[]"
+	rulesQueryExcludeAlerts = "exclude_alerts"
+)
+
+// RulesOptions narrows a GetRules call. Every field maps onto a query
+// parameter of GET /api/v1/rules that both Prometheus and the Mimir ruler
+// honour; zero values send nothing, so the empty struct returns every rule
+// group. match[] is deliberately not exposed: the Mimir ruler (3.1) accepts
+// and ignores it, which would make a "filtered" result silently complete.
+type RulesOptions struct {
+	// Type restricts the result to alerting (RuleTypeAlert) or recording
+	// (RuleTypeRecord) rules. Empty returns both.
+	Type string
+	// RuleNames keeps only rules with one of these exact names (rule_name[]).
+	RuleNames []string
+	// RuleGroups keeps only rule groups with one of these names (rule_group[]).
+	RuleGroups []string
+	// Files keeps only rule groups loaded from these files (file[]). On Mimir
+	// the file is the rule namespace.
+	Files []string
+	// ExcludeAlerts drops the active alerts embedded in alerting rules
+	// (exclude_alerts=true), which shrinks the response considerably.
+	ExcludeAlerts bool
+}
+
+// queryValues encodes the options as /api/v1/rules query parameters.
+func (o RulesOptions) queryValues() (url.Values, error) {
+	q := url.Values{}
+	switch o.Type {
+	case "":
+	case RuleTypeAlert, RuleTypeRecord:
+		q.Set(rulesQueryType, o.Type)
+	default:
+		return nil, fmt.Errorf("invalid rule type %q: must be %q or %q", o.Type, RuleTypeAlert, RuleTypeRecord)
+	}
+	for _, n := range o.RuleNames {
+		q.Add(rulesQueryRuleName, n)
+	}
+	for _, g := range o.RuleGroups {
+		q.Add(rulesQueryRuleGroup, g)
+	}
+	for _, f := range o.Files {
+		q.Add(rulesQueryFile, f)
+	}
+	if o.ExcludeAlerts {
+		q.Set(rulesQueryExcludeAlerts, strconv.FormatBool(true))
+	}
+	return q, nil
+}
+
+// GetRules gets recording and alerting rules, narrowed by options.
+//
+// client_golang's v1.API.Rules only forwards match[] and none of these
+// filters, so the request is built by hand against the same api.Client (same
+// base path, authentication and X-Scope-OrgID round trippers) and decoded into
+// the library's RulesResult.
+func (c *Client) GetRules(ctx context.Context, options RulesOptions) (interface{}, error) {
+	if c.apiClient == nil {
 		return nil, fmt.Errorf("prometheus client not initialized")
+	}
+
+	q, err := options.queryValues()
+	if err != nil {
+		return nil, err
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	// A nil matcher list requests all rules, preserving the previous behaviour
-	// of the single-argument Rules call.
-	rules, err := c.client.Rules(ctx, nil)
+	u := c.apiClient.URL(rulesEndpoint, nil)
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create rules request: %w", err)
+	}
+
+	resp, body, err := c.apiClient.Do(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rules: %w", err)
+	}
+	data, err := unwrapAPIResponse(resp, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rules: %w", err)
 	}
 
+	var rules v1.RulesResult
+	if err := json.Unmarshal(data, &rules); err != nil {
+		return nil, fmt.Errorf("failed to decode rules: %w", err)
+	}
+
 	return rules, nil
+}
+
+// unwrapAPIResponse extracts the "data" member of a Prometheus HTTP API
+// envelope, or converts an error envelope / non-2xx status into a *v1.Error
+// so callers see the same "errorType: message" wording as for every other
+// v1.API call (e.g. "bad_data: no valid org id found").
+func unwrapAPIResponse(resp *http.Response, body []byte) (json.RawMessage, error) {
+	var env struct {
+		Status    string          `json:"status"`
+		Data      json.RawMessage `json:"data"`
+		ErrorType v1.ErrorType    `json:"errorType"`
+		Error     string          `json:"error"`
+	}
+	if jsonErr := json.Unmarshal(body, &env); jsonErr != nil {
+		if resp.StatusCode/100 != 2 {
+			return nil, &v1.Error{
+				Type:   httpErrorType(resp.StatusCode),
+				Msg:    fmt.Sprintf("bad response code %d", resp.StatusCode),
+				Detail: string(body),
+			}
+		}
+		return nil, &v1.Error{Type: v1.ErrBadResponse, Msg: jsonErr.Error()}
+	}
+	if env.Status != "success" {
+		typ := env.ErrorType
+		if typ == "" {
+			typ = httpErrorType(resp.StatusCode)
+		}
+		msg := env.Error
+		if msg == "" {
+			msg = fmt.Sprintf("bad response code %d", resp.StatusCode)
+		}
+		return nil, &v1.Error{Type: typ, Msg: msg, Detail: string(body)}
+	}
+	return env.Data, nil
+}
+
+// httpErrorType classifies an HTTP status the way client_golang does.
+func httpErrorType(code int) v1.ErrorType {
+	switch code / 100 {
+	case 4:
+		return v1.ErrClient
+	case 5:
+		return v1.ErrServer
+	default:
+		return v1.ErrBadResponse
+	}
 }
 
 // GetAlerts gets active alerts

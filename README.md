@@ -460,6 +460,11 @@ Query tools accept: `timeout`, `limit`, `stats`, `lookback_delta`, `unlimited`.
 | `mcp_prometheus_get_alertmanagers` | AlertManager discovery |
 | `mcp_prometheus_get_rules` | Recording and alerting rules |
 
+`get_rules` accepts the filters of `GET /api/v1/rules`, applied server-side by Prometheus or the
+Mimir ruler: `type` (`alert` or `record`), `rule_name`, `rule_group`, `file` (the Mimir rule
+namespace) and `exclude_alerts`. Label matchers (`match[]`) are not exposed because the Mimir
+ruler ignores them. On Mimir pass `org_id` — the ruler API rejects requests without a tenant.
+
 ### Advanced
 
 | Tool | Description |

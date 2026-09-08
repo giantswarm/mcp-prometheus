@@ -87,6 +87,13 @@ const (
 	// errQueryParameterRequired is returned when a query handler is called without
 	// the required "query" argument.
 	errQueryParameterRequired = "Error: query parameter is required and must be a string"
+
+	// get_rules filter parameters (see RulesOptions for the wire mapping).
+	paramRuleType      = "type"
+	paramRuleName      = "rule_name"
+	paramRuleGroup     = "rule_group"
+	paramRuleFile      = "file"
+	paramExcludeAlerts = "exclude_alerts"
 )
 
 // Common parameter builders to reduce repetition
@@ -338,7 +345,21 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 
 	registerPrometheusTools(s, client, sc, middleware, "get_alertmanagers", "Get AlertManager discovery information", noTruncation, handleGetAlertManagers)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_rules", "Get recording and alerting rules", bulkAdvice, handleGetRules)
+	registerPrometheusTools(s, client, sc, middleware, "get_rules",
+		"Get recording and alerting rules. The optional filters map onto the query parameters of GET /api/v1/rules and are applied server-side, "+
+			"so prefer them over post-processing a full dump. On Mimir the ruler API requires a tenant: pass org_id when no default is configured.",
+		bulkAdvice, handleGetRules,
+		mcp.WithString(paramRuleType, mcp.Enum(RuleTypeAlert, RuleTypeRecord),
+			mcp.Description("Return only alerting rules ('alert') or recording rules ('record'); omit for both")),
+		mcp.WithArray(paramRuleName, mcp.WithStringItems(),
+			mcp.Description("Only return rules with these exact names (e.g. ['MCPKubernetesDown'])")),
+		mcp.WithArray(paramRuleGroup, mcp.WithStringItems(),
+			mcp.Description("Only return rule groups with these exact names")),
+		mcp.WithArray(paramRuleFile, mcp.WithStringItems(),
+			mcp.Description("Only return rule groups loaded from these files; on Mimir the file is the rule namespace")),
+		mcp.WithBoolean(paramExcludeAlerts,
+			mcp.Description("Set to true to omit the active alerts embedded in alerting rules (much smaller output)")),
+	)
 
 	// Advanced tools
 	registerPrometheusTools(s, client, sc, middleware, "get_tsdb_stats", "Get TSDB cardinality statistics",
@@ -943,9 +964,18 @@ func handleFindSeries(ctx context.Context, request mcp.CallToolRequest, client *
 
 // handleGetRules handles the get_rules tool
 func handleGetRules(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error) {
-	sc.Logger().Debug("Getting rules")
+	params := extractParams(request)
 
-	rules, err := client.GetRules(ctx)
+	options := RulesOptions{
+		Type:          getStringParam(params, paramRuleType),
+		RuleNames:     extractStringArray(params, paramRuleName),
+		RuleGroups:    extractStringArray(params, paramRuleGroup),
+		Files:         extractStringArray(params, paramRuleFile),
+		ExcludeAlerts: getBoolParam(params, paramExcludeAlerts),
+	}
+	sc.Logger().Debug("Getting rules", "options", options)
+
+	rules, err := client.GetRules(ctx, options)
 	if err != nil {
 		sc.Logger().Error("Failed to get rules", "error", err)
 		return &mcp.CallToolResult{
@@ -1307,4 +1337,11 @@ func getStringParam(params map[string]any, key string) string {
 		return val
 	}
 	return ""
+}
+
+// getBoolParam returns the boolean value of key, or false when absent or not
+// a JSON boolean (the input schema rejects other types before the handler runs).
+func getBoolParam(params map[string]any, key string) bool {
+	val, _ := params[key].(bool)
+	return val
 }
