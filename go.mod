@@ -144,3 +144,20 @@ require (
 // go mod tidy would otherwise resolve them below the fixed versions,
 // because nothing imports them directly.
 replace golang.org/x/mod => golang.org/x/mod v0.40.0
+
+// Graph-only pins: sigstore-go (via the cosign verification in self-update)
+// pulls github.com/sigstore/rekor into the module graph, and rekor's go.mod
+// requires its server-side dependencies at versions OSS Index flags (nancy in
+// the architect orb this repo pins, 10.0.0, audits `go list -m all`; 10.2.0+
+// audits built packages only). None of these modules is compiled into
+// mcp-prometheus; `go mod tidy` drops a plain require for them, so they are
+// pinned with replace. Drop each pin once rekor (through sigstore-go) requires
+// the fixed version itself, or once the orb pin reaches 10.2.0.
+replace (
+	github.com/jackc/pgx/v5 => github.com/jackc/pgx/v5 v5.11.0 // CVE-2026-33815 CVE-2026-33816 CVE-2026-41889
+	github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.314.0 // CVE-2026-42154 CVE-2026-40179
+	go.etcd.io/etcd/client/pkg/v3 => go.etcd.io/etcd/client/pkg/v3 v3.7.1 // CVE-2026-73500
+	go.etcd.io/etcd/server/v3 => go.etcd.io/etcd/server/v3 v3.7.1 // CVE-2026-44283 CVE-2026-73499
+	go.etcd.io/etcd/v3 => go.etcd.io/etcd/v3 v3.7.1 // CVE-2026-33413 CVE-2026-59818 CVE-2026-73500 CVE-2026-33343 CVE-2026-44283
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc => go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.46.0 // CVE-2026-81870
+)
