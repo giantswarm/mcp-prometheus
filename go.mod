@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/creativeprojects/go-selfupdate v1.6.0
-	github.com/giantswarm/mcp-oauth v1.3.15
+	github.com/giantswarm/mcp-oauth v1.3.16
 	github.com/giantswarm/selfupdate-cosign v0.1.0
 	github.com/mark3labs/mcp-go v1.0.0
 	github.com/prometheus/client_golang v1.24.1
@@ -14,7 +14,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0
 	go.opentelemetry.io/otel/sdk v1.46.0
 	go.opentelemetry.io/otel/trace v1.46.0
-	golang.org/x/sync v0.22.0
+	golang.org/x/sync v0.23.0
 	k8s.io/apimachinery v0.37.0
 	k8s.io/client-go v0.37.0
 )
