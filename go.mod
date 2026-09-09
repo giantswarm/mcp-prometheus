@@ -143,7 +143,7 @@ require (
 // Pin transitive modules flagged by the OSS Index scan (nancy) in CI.
 // go mod tidy would otherwise resolve them below the fixed versions,
 // because nothing imports them directly.
-replace golang.org/x/mod => golang.org/x/mod v0.40.0
+replace golang.org/x/mod => golang.org/x/mod v0.41.0
 
 // Graph-only pins: sigstore-go (via the cosign verification in self-update)
 // pulls github.com/sigstore/rekor into the module graph, and rekor's go.mod
