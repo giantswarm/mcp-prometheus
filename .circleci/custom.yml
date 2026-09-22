@@ -1,0 +1,41 @@
+# Repo-owned additions to the generated .circleci/workflows.yml. The setup
+# workflow in config.yml deep-merges this file into it at pipeline runtime;
+# devctl never touches it.
+#
+#   - chart-test: helm lint plus the helm-unittest suites in
+#     helm/mcp-prometheus/tests/ (what the Deployment and the Secret render
+#     from the values). Not reachable from `make test`: the unittest plugin is
+#     not in the architect go image, so the job runs in a plain container with
+#     a pinned helm.
+version: 2.1
+
+jobs:
+  chart-test:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    environment:
+      HELM_VERSION: v3.16.0
+    steps:
+      - checkout
+      - run:
+          name: Install helm
+          command: |
+            set -euxo pipefail
+            curl -sSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar -xz -C /tmp
+            sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
+            helm version --short
+      - run:
+          name: Run chart tests
+          command: make helm-test
+
+workflows:
+  build:
+    jobs:
+    # Independent of go-build: a chart-only PR gets the signal without waiting
+    # on the Go build, and a Go-only PR still proves the chart renders. Same
+    # tag filter as the other test jobs.
+    - chart-test:
+        filters:
+          tags:
+            only: /^v.*/

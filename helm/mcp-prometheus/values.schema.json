@@ -5,7 +5,7 @@
     "properties": {
         "affinity": {
             "type": "object",
-            "additionalProperties": false
+            "additionalProperties": true
         },
         "app": {
             "type": "object",
@@ -46,6 +46,9 @@
                             "type": "string"
                         },
                         "existingSecret": {
+                            "type": "string"
+                        },
+                        "existingSecretChecksum": {
                             "type": "string"
                         },
                         "google": {
@@ -275,7 +278,7 @@
                 "null"
             ],
             "description": "Global values shared between all subcharts",
-            "$comment": "Added automatically by 'helm schema' to allow this chart to be used as a Helm dependency, as the `additionalProperties` setting would otherwise collide with Helm's special 'global' values key."
+            "$comment": "Added automatically by 'helm schema' to allow this chart to be used as a Helm dependency, as this schema would otherwise not allow Helm's special 'global' values key."
         },
         "image": {
             "type": "object",
@@ -375,15 +378,15 @@
         },
         "nodeSelector": {
             "type": "object",
-            "additionalProperties": false
+            "additionalProperties": true
         },
         "podAnnotations": {
             "type": "object",
-            "additionalProperties": false
+            "additionalProperties": true
         },
         "podLabels": {
             "type": "object",
-            "additionalProperties": false
+            "additionalProperties": true
         },
         "podSecurityContext": {
             "type": "object",

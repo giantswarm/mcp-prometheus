@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* The server rolls when its OAuth credentials change. The pod template carries a `checksum/oauth-secret` annotation: the SHA-256 of the chart-rendered Secret's data, or the new `app.oauth.existingSecretChecksum` value verbatim when the credentials come from an existing Secret the chart cannot read, so whoever rotates that Secret changes the value in the same change. Before, a Dex client secret, encryption key or Valkey password rotated in the Secret left the running pod on the old values until a hand-run restart, and the server and Dex, or the server and its Valkey, disagreed as soon as one of them restarted. Chart unit tests pin the annotation; the new `chart-test` CircleCI job runs them.
+* `podAnnotations`, `podLabels`, `nodeSelector` and `affinity` accept entries again: the generated values schema rejected every key under them (`additional properties not allowed`).
 * Team ownership: `application.giantswarm.io/team` annotation set to `atlas` (was `planeteers`).
 * Drop the version badges from the chart README so a release PR's `Chart.yaml` version bump no longer leaves `README.md` stale and fails the helm-docs pre-commit hook.
 

@@ -87,3 +87,54 @@ Effective tenancy mode (app.tenancy.mode), defaulting to grafana-organization.
 {{- define "mcp-prometheus.tenancyMode" -}}
 {{- .Values.app.tenancy.mode | default "grafana-organization" -}}
 {{- end }}
+
+{{/*
+Data of the OAuth credentials Secret the chart renders (templates/oauth-secret.yaml):
+the provider's client secret, the token encryption key and, when set, the
+Valkey password. Its SHA-256 is the pod template's checksum/oauth-secret
+annotation, so the server rolls when one of them changes.
+*/}}
+{{- define "mcp-prometheus.oauthSecretData" -}}
+{{- if eq (include "mcp-prometheus.oauthProvider" .) "google" -}}
+GOOGLE_CLIENT_SECRET: {{ .Values.app.oauth.googleClientSecret | b64enc | quote }}
+{{- else -}}
+DEX_CLIENT_SECRET: {{ .Values.app.oauth.dexClientSecret | b64enc | quote }}
+{{- end }}
+MCP_OAUTH_ENCRYPTION_KEY: {{ .Values.app.oauth.encryptionKey | b64enc | quote }}
+{{- if .Values.app.oauth.storage.valkey.password }}
+VALKEY_PASSWORD: {{ .Values.app.oauth.storage.valkey.password | b64enc | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
+Value of the pod template's checksum/oauth-secret annotation: the SHA-256 of
+the chart-rendered Secret's data, or app.oauth.existingSecretChecksum verbatim
+when the credentials come from an existing Secret the chart cannot read. Empty
+while OAuth is off, or while nothing marks the existing Secret's revision.
+*/}}
+{{- define "mcp-prometheus.oauthSecretChecksum" -}}
+{{- if .Values.app.oauth.enabled -}}
+{{- if .Values.app.oauth.existingSecret -}}
+{{- .Values.app.oauth.existingSecretChecksum -}}
+{{- else -}}
+{{- include "mcp-prometheus.oauthSecretData" . | sha256sum -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Pod template annotations: podAnnotations plus the OAuth credentials checksum.
+Empty when there is nothing to annotate.
+*/}}
+{{- define "mcp-prometheus.podAnnotations" -}}
+{{- $annotations := dict -}}
+{{- range $key, $value := .Values.podAnnotations -}}
+{{- $_ := set $annotations $key $value -}}
+{{- end -}}
+{{- with include "mcp-prometheus.oauthSecretChecksum" . -}}
+{{- $_ := set $annotations "checksum/oauth-secret" . -}}
+{{- end -}}
+{{- with $annotations -}}
+{{- toYaml . -}}
+{{- end -}}
+{{- end }}

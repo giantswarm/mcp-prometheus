@@ -30,3 +30,22 @@ test-ci-pr: ## Run 'act' to simulate CI checks for a pull request
 test-ci-push: ## Run 'act' to simulate CI checks for a push to main
 	@echo "Simulating CI workflow (push event)..."
 	@act push --job check
+
+##@ Helm
+
+HELM_UNITTEST_VERSION := 1.0.3
+
+.PHONY: helm-lint
+helm-lint: ## Lint the chart.
+	helm lint helm/mcp-prometheus
+
+.PHONY: helm-test
+helm-test: helm-lint helm-unittest ## Run every chart check (what the chart-test CI job runs).
+
+.PHONY: helm-unittest
+helm-unittest: helm-plugin-unittest ## Run the helm-unittest suites in helm/mcp-prometheus/tests/.
+	helm unittest helm/mcp-prometheus
+
+.PHONY: helm-plugin-unittest
+helm-plugin-unittest:
+	@helm plugin list | grep -q '^unittest' || helm plugin install https://github.com/helm-unittest/helm-unittest --version $(HELM_UNITTEST_VERSION)

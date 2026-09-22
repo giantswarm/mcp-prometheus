@@ -15,9 +15,9 @@ spec:
       {{- include "mcp-prometheus.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- with include "mcp-prometheus.podAnnotations" . }}
       annotations:
-        {{- toYaml . | nindent 8 }}
+        {{- . | nindent 8 }}
       {{- end }}
       labels:
         {{- include "mcp-prometheus.labels" . | nindent 8 }}
