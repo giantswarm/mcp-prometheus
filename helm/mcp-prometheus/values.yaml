@@ -26,8 +26,8 @@ serviceAccount:
   # If not set and create is true, a name is generated using the fullname template
   name: ""
 
-podAnnotations: {}
-podLabels: {}
+podAnnotations: {}  # @schema additionalProperties: true
+podLabels: {}  # @schema additionalProperties: true
 
 podSecurityContext:
   runAsUser: 1000
@@ -120,11 +120,11 @@ monitoring:
     # Additional labels to add to the ServiceMonitor (e.g. to match a Prometheus selector).
     labels: {}  # @schema additionalProperties: true
 
-nodeSelector: {}
+nodeSelector: {}  # @schema additionalProperties: true
 
 tolerations: []
 
-affinity: {}
+affinity: {}  # @schema additionalProperties: true
 
 # Application specific configuration
 app:
@@ -175,7 +175,18 @@ app:
     #   DEX_CLIENT_SECRET     (provider dex)    or
     #   GOOGLE_CLIENT_SECRET  (provider google),
     #   MCP_OAUTH_ENCRYPTION_KEY, and optionally VALKEY_PASSWORD.
+    # The server reads the Secret at start and never again; see
+    # existingSecretChecksum for how a rotation reaches it.
     existingSecret: ""
+
+    # Revision mark of existingSecret. The pod template carries a
+    # checksum/oauth-secret annotation so the server rolls when its credentials
+    # change: for a chart-rendered Secret the SHA-256 of the Secret's data, for
+    # an existing Secret, which the chart cannot read, this value verbatim.
+    # Whoever rotates the Secret changes this value in the same change (a hash
+    # over the new data, a counter, a date). While it is empty, a rotation of
+    # the existing Secret alone leaves the running server on the old values.
+    existingSecretChecksum: ""
 
     # Dex OAuth client secret (provider: dex; stored in a chart-created Secret
     # under the key DEX_CLIENT_SECRET)

@@ -18,6 +18,24 @@ A Helm chart for mcp-prometheus - MCP server for Prometheus metrics
 
 Kubernetes: `>=1.25.0-0`
 
+## Rolling on credential rotation
+
+The server reads its OAuth credentials (the Dex or Google client secret, the
+token encryption key, the Valkey password) from a Secret at start and never
+again. The pod template carries a `checksum/oauth-secret` annotation so a
+changed credential restarts the server:
+
+- With `app.oauth.existingSecret` empty the chart renders the Secret from
+  `app.oauth.dexClientSecret` (or `googleClientSecret`), `app.oauth.encryptionKey`
+  and `app.oauth.storage.valkey.password`; the annotation is the SHA-256 of that
+  Secret's data and follows every change of those values.
+- With `app.oauth.existingSecret` set the chart cannot read the Secret; the
+  annotation is `app.oauth.existingSecretChecksum` verbatim. Change it in the
+  same change that rotates the Secret (a hash over the new data, a counter, a
+  date). A Flux `HelmRelease` can instead feed the Secret's keys into the values
+  above through `valuesFrom` entries with `targetPath`, so the chart renders the
+  Secret itself and the checksum follows the rotation on its own.
+
 ## Values
 
 | Key | Type | Default | Description |
@@ -92,6 +110,7 @@ Kubernetes: `>=1.25.0-0`
 | app.oauth.redirectURL | string | `""` |  |
 | app.oauth.google.clientID | string | `""` |  |
 | app.oauth.existingSecret | string | `""` |  |
+| app.oauth.existingSecretChecksum | string | `""` |  |
 | app.oauth.dexClientSecret | string | `""` |  |
 | app.oauth.googleClientSecret | string | `""` |  |
 | app.oauth.encryptionKey | string | `""` |  |
