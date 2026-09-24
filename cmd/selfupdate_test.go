@@ -140,6 +140,10 @@ func (r fakeRelease) GetURL() string {
 }
 func (r fakeRelease) GetAssets() []selfupdate.SourceAsset { return r.assets }
 
+// newerTag is the tag of the release the fake GitHub offers, newer than the
+// version the tests run as.
+const newerTag = "v99.0.0"
+
 // binaryAsset is the asset name architect publishes for this platform.
 func binaryAsset() string {
 	name := "mcp-prometheus-" + runtime.GOOS + "-" + runtime.GOARCH
@@ -182,7 +186,7 @@ func assertUnchanged(t *testing.T, exe string, installed []byte) {
 
 func TestRunSelfUpdateRefusesAReleaseWithoutASignatureBundle(t *testing.T) {
 	src := &fakeSource{
-		release: fakeRelease{tag: "v99.0.0", assets: []selfupdate.SourceAsset{fakeAsset{1, binaryAsset()}}},
+		release: fakeRelease{tag: newerTag, assets: []selfupdate.SourceAsset{fakeAsset{1, binaryAsset()}}},
 		assets:  map[int64][]byte{1: []byte("a newer mcp-prometheus, unsigned")},
 	}
 	exe, installed := selfUpdateFixture(t, src)
@@ -199,7 +203,7 @@ func TestRunSelfUpdateRefusesAReleaseWithoutASignatureBundle(t *testing.T) {
 
 func TestRunSelfUpdateRefusesADownloadThatDoesNotVerify(t *testing.T) {
 	src := &fakeSource{
-		release: fakeRelease{tag: "v99.0.0", assets: []selfupdate.SourceAsset{
+		release: fakeRelease{tag: newerTag, assets: []selfupdate.SourceAsset{
 			fakeAsset{1, binaryAsset()},
 			fakeAsset{2, binaryAsset() + ".bundle"},
 		}},
@@ -240,7 +244,7 @@ func TestRunSelfUpdateInstallsAVerifiedReleaseInPlace(t *testing.T) {
 		t.Skip("on Windows the update is go-selfupdate's own swap")
 	}
 	src := &fakeSource{
-		release: fakeRelease{tag: "v99.0.0", assets: []selfupdate.SourceAsset{
+		release: fakeRelease{tag: newerTag, assets: []selfupdate.SourceAsset{
 			fakeAsset{1, binaryAsset()},
 			fakeAsset{2, binaryAsset() + ".bundle"},
 		}},
