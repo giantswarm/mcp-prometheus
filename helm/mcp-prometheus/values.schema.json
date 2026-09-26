@@ -80,10 +80,16 @@
                                     "type": "object",
                                     "additionalProperties": false,
                                     "properties": {
+                                        "existingSecret": {
+                                            "type": "string"
+                                        },
                                         "keyPrefix": {
                                             "type": "string"
                                         },
                                         "password": {
+                                            "type": "string"
+                                        },
+                                        "secretKeyPassword": {
                                             "type": "string"
                                         },
                                         "tlsEnabled": {

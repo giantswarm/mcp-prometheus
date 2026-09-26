@@ -121,6 +121,8 @@ changed credential restarts the server:
 | app.oauth.storage.type | string | `"memory"` |  |
 | app.oauth.storage.valkey.url | string | `""` |  |
 | app.oauth.storage.valkey.password | string | `""` |  |
+| app.oauth.storage.valkey.existingSecret | string | `""` |  |
+| app.oauth.storage.valkey.secretKeyPassword | string | `"valkey-password"` |  |
 | app.oauth.storage.valkey.tlsEnabled | bool | `false` |  |
 | app.oauth.storage.valkey.keyPrefix | string | `"mcp-prometheus:"` |  |
 | app.oauth.trustedAudiences | list | `[]` |  |
