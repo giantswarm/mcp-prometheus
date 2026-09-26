@@ -1,0 +1,82 @@
+# Valkey token storage tests for the mcp-prometheus Helm chart
+#
+# app.oauth.storage selects the server's token store through OAUTH_STORAGE and
+# the VALKEY_* environment. The Valkey password comes from the OAuth Secret
+# (VALKEY_PASSWORD, via envFrom) or, when app.oauth.storage.valkey.existingSecret
+# is set, from that Secret, typically the one the Valkey deployment reads its
+# ACL users from.
+#
+# Run with: helm unittest ./helm/mcp-prometheus
+
+suite: Valkey token storage
+templates:
+  - templates/deployment.yaml
+release:
+  name: mcp-prometheus
+  namespace: mcp-prometheus
+set:
+  app.oauth.enabled: true
+  app.oauth.existingSecret: mcp-prometheus-oauth-credentials
+tests:
+  - it: keeps the in-memory store by default
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH_STORAGE
+          any: true
+
+  - it: selects the Valkey store
+    set:
+      app.oauth.storage.type: valkey
+      app.oauth.storage.valkey.url: mcp-prometheus-valkey.mcp-prometheus.svc:6379
+      app.oauth.storage.valkey.keyPrefix: "mcp:"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH_STORAGE
+            value: valkey
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: VALKEY_URL
+            value: mcp-prometheus-valkey.mcp-prometheus.svc:6379
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: VALKEY_TLS_ENABLED
+            value: "false"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: VALKEY_KEY_PREFIX
+            value: "mcp:"
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: VALKEY_PASSWORD
+          any: true
+
+  - it: reads the password from the Valkey auth Secret
+    set:
+      app.oauth.storage.type: valkey
+      app.oauth.storage.valkey.url: mcp-prometheus-valkey.mcp-prometheus.svc:6379
+      app.oauth.storage.valkey.existingSecret: mcp-prometheus-valkey-auth
+      app.oauth.storage.valkey.secretKeyPassword: default
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: VALKEY_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mcp-prometheus-valkey-auth
+                key: default
+
+  - it: requires the Valkey address
+    set:
+      app.oauth.storage.type: valkey
+    asserts:
+      - failedTemplate:
+          errorMessage: app.oauth.storage.valkey.url is required when app.oauth.storage.type is valkey

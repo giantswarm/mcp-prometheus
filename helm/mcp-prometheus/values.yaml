@@ -226,8 +226,16 @@ app:
       # "memory" (default, no persistence) or "valkey"
       type: memory
       valkey:
+        # Valkey address, host:port (required when type is "valkey")
         url: ""
+        # Password, stored in the chart-rendered OAuth Secret as VALKEY_PASSWORD
         password: ""
+        # Existing Secret with the Valkey password, e.g. the Secret the Valkey
+        # deployment reads its ACL users from. Takes precedence over password
+        # and over a VALKEY_PASSWORD key in app.oauth.existingSecret.
+        existingSecret: ""
+        # Key of the password in existingSecret
+        secretKeyPassword: "valkey-password"
         tlsEnabled: false
         keyPrefix: "mcp-prometheus:"
 

@@ -167,6 +167,27 @@ spec:
             - name: DEX_CA_FILE
               value: "/etc/ssl/certs/dex-ca/{{ .Values.app.oauth.dexCASecret.key | default "ca.crt" }}"
             {{- end }}
+            {{- with .Values.app.oauth.storage }}
+            {{- if eq .type "valkey" }}
+            - name: OAUTH_STORAGE
+              value: "valkey"
+            - name: VALKEY_URL
+              value: {{ required "app.oauth.storage.valkey.url is required when app.oauth.storage.type is valkey" .valkey.url | quote }}
+            - name: VALKEY_TLS_ENABLED
+              value: {{ .valkey.tlsEnabled | quote }}
+            {{- with .valkey.keyPrefix }}
+            - name: VALKEY_KEY_PREFIX
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .valkey.existingSecret }}
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . | quote }}
+                  key: {{ $.Values.app.oauth.storage.valkey.secretKeyPassword | default "valkey-password" | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             {{- end }}
             {{- if $hasStaticGroupMap }}
             - name: TENANCY_STATIC_GROUP_MAP
