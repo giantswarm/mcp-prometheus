@@ -7,7 +7,13 @@ import (
 )
 
 // validatePrometheusURL checks that a caller-supplied prometheus_url is safe
-// to use as an HTTP target.
+// to use as an HTTP target; see validateURL.
+func validatePrometheusURL(raw string) error {
+	return validateURL("prometheus_url", raw)
+}
+
+// validateURL checks that the caller-supplied URL parameter param is safe to
+// use as an HTTP target.
 //
 // Permitted:
 //   - Scheme must be http or https.
@@ -20,31 +26,31 @@ import (
 //     fe80::/10 — this is where cloud instance metadata services
 //     (AWS IMDSv1, GCP, Azure) live; there is never a legitimate Prometheus
 //     endpoint there.
-func validatePrometheusURL(raw string) error {
+func validateURL(param, raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("invalid prometheus_url: %w", err)
+		return fmt.Errorf("invalid %s: %w", param, err)
 	}
 
 	switch u.Scheme {
 	case "http", "https":
 		// allowed
 	case "":
-		return fmt.Errorf("invalid prometheus_url %q: scheme is required (use http:// or https://)", raw)
+		return fmt.Errorf("invalid %s %q: scheme is required (use http:// or https://)", param, raw)
 	default:
-		return fmt.Errorf("invalid prometheus_url %q: scheme %q is not allowed (use http:// or https://)", raw, u.Scheme)
+		return fmt.Errorf("invalid %s %q: scheme %q is not allowed (use http:// or https://)", param, raw, u.Scheme)
 	}
 
 	host := u.Hostname()
 	if host == "" {
-		return fmt.Errorf("invalid prometheus_url %q: host is required", raw)
+		return fmt.Errorf("invalid %s %q: host is required", param, raw)
 	}
 
 	ip := net.ParseIP(host)
 	if ip != nil {
 		// Block link-local ranges — cloud metadata services (169.254.169.254, fe80::…).
 		if isLinkLocal(ip) {
-			return fmt.Errorf("invalid prometheus_url %q: link-local addresses are not allowed", raw)
+			return fmt.Errorf("invalid %s %q: link-local addresses are not allowed", param, raw)
 		}
 	}
 

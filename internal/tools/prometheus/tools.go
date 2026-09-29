@@ -252,7 +252,13 @@ func withDynamicPrometheusClient(handler PrometheusHandler, client *Client, sc *
 // false. destructiveHint and idempotentHint are omitted because they are only
 // meaningful when readOnlyHint is false.
 func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.ServerContext, middleware []ToolMiddleware, toolName string, description string, advice string, handler PrometheusHandler, options ...mcp.ToolOption) {
-	allOptions := withPrometheusConnectionParams(options...)
+	registerTool(s, middleware, toolName, description, advice,
+		withDynamicPrometheusClient(handler, client, sc), withPrometheusConnectionParams(options...)...)
+}
+
+// registerTool registers one read-only tool with the truncation middleware
+// (unless advice is noTruncation) and the user-supplied middlewares.
+func registerTool(s *mcpserver.MCPServer, middleware []ToolMiddleware, toolName string, description string, advice string, h func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error), options ...mcp.ToolOption) {
 	baseOptions := []mcp.ToolOption{
 		mcp.WithDescription(description),
 		mcp.WithReadOnlyHintAnnotation(true),
@@ -261,9 +267,8 @@ func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.
 		// unknown property names so typo'd args surface as errors — SEP-1303.
 		mcp.WithSchemaAdditionalProperties(false),
 	}
-	tool := mcp.NewTool(toolName, append(baseOptions, allOptions...)...)
+	tool := mcp.NewTool(toolName, append(baseOptions, options...)...)
 
-	h := withDynamicPrometheusClient(handler, client, sc)
 	if advice != noTruncation {
 		h = truncationMiddleware(toolName, advice, h)
 	}
@@ -344,6 +349,22 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 	registerPrometheusTools(s, client, sc, middleware, "get_alerts", "Get active alerts", alertsAdvice, handleGetAlerts)
 
 	registerPrometheusTools(s, client, sc, middleware, "get_alertmanagers", "Get AlertManager discovery information", noTruncation, handleGetAlertManagers)
+
+	registerTool(s, middleware, toolGetAlertmanagerAlerts,
+		"Get the alerts that notify from Alertmanager: active, neither silenced nor inhibited, oldest first, "+
+			"with fingerprint, alertname, severity, start time, labels, annotations and receivers. "+
+			"Filters are applied by the Alertmanager. On Mimir pass org_id when no default tenant is configured.",
+		alertmanagerAdvice,
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleGetAlertmanagerAlerts(ctx, req, sc)
+		},
+		mcp.WithString(paramAlertmanagerURL,
+			mcp.Description("Alertmanager base URL (e.g. 'http://mimir-gateway.mimir/alertmanager' or 'http://alertmanager:9093'); defaults to ALERTMANAGER_URL")),
+		mcp.WithString("org_id", mcp.Description("Organization ID (X-Scope-OrgID) for the multi-tenant Mimir Alertmanager")),
+		mcp.WithString(paramReceiver, mcp.Description("Only alerts routed to a receiver matching this regex")),
+		mcp.WithArray(paramFilter, mcp.WithStringItems(),
+			mcp.Description("Only alerts matching every label matcher, e.g. ['team=\"bumblebee\"', 'severity=~\"page|notify\"']")),
+	)
 
 	registerPrometheusTools(s, client, sc, middleware, "get_rules",
 		"Get recording and alerting rules. The optional filters map onto the query parameters of GET /api/v1/rules and are applied server-side, "+
