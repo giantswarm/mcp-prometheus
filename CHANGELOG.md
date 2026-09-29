@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+* `get_alertmanager_alerts` returns the alerts that notify from Alertmanager's `GET /api/v2/alerts`: active, neither silenced nor inhibited, oldest first, each with fingerprint, alertname, severity, start time, labels, annotations and receivers. `filter` (label matchers) and `receiver` (regex) are applied by the Alertmanager. The Alertmanager URL is `ALERTMANAGER_URL` per deployment or the `alertmanager_url` parameter; authentication, TLS and the tenant (`X-Scope-OrgID`) are the Prometheus tools' own, so Mimir's multi-tenant Alertmanager works as is.
+
 ### Changed
 
 * Use the canonical `io.giantswarm.application.team` annotation key for team ownership (value `atlas` unchanged).

@@ -307,6 +307,9 @@ app:
     #   value: "true"
     # - name: PROMETHEUS_TLS_CA_CERT
     #   value: "/etc/ssl/certs/ca.pem"
+    # Alertmanager for get_alertmanager_alerts (shares the auth and org ID above)
+    # - name: ALERTMANAGER_URL
+    #   value: "http://mimir-gateway.mimir.svc.cluster.local/alertmanager"
     # OpenTelemetry tracing (no-op by default)
     # - name: OTEL_EXPORTER_OTLP_ENDPOINT
     #   value: "http://otel-collector:4318"

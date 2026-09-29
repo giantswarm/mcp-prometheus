@@ -104,6 +104,7 @@ All configuration is via environment variables.
 | `PROMETHEUS_ORGID` | — | Default Mimir org/tenant ID |
 | `PROMETHEUS_TLS_SKIP_VERIFY` | `false` | Skip TLS verification (dev only) |
 | `PROMETHEUS_TLS_CA_CERT` | — | Path to PEM CA certificate |
+| `ALERTMANAGER_URL` | — | Alertmanager base URL for `get_alertmanager_alerts` (Mimir: `http://mimir-gateway.mimir/alertmanager`); uses the authentication, TLS and org ID settings above |
 
 ### OAuth 2.1
 
@@ -459,11 +460,19 @@ Query tools accept: `timeout`, `limit`, `stats`, `lookback_delta`, `unlimited`.
 | `mcp_prometheus_get_alerts` | Active alerts |
 | `mcp_prometheus_get_alertmanagers` | AlertManager discovery |
 | `mcp_prometheus_get_rules` | Recording and alerting rules |
+| `mcp_prometheus_get_alertmanager_alerts` | Alerts that notify, from Alertmanager: active, not silenced, not inhibited |
 
 `get_rules` accepts the filters of `GET /api/v1/rules`, applied server-side by Prometheus or the
 Mimir ruler: `type` (`alert` or `record`), `rule_name`, `rule_group`, `file` (the Mimir rule
 namespace) and `exclude_alerts`. Label matchers (`match[]`) are not exposed because the Mimir
 ruler ignores them. On Mimir pass `org_id` — the ruler API rejects requests without a tenant.
+
+`get_alertmanager_alerts` reads `GET /api/v2/alerts` of the Alertmanager at `alertmanager_url` or
+`ALERTMANAGER_URL` and returns the alerts that notify, oldest first, each with its fingerprint,
+alertname, severity, start time, labels, annotations and receivers. `filter` takes label matchers
+(`team="bumblebee"`, `severity=~"page|notify"`) and `receiver` a receiver regex; both are applied
+by the Alertmanager. The tenant is resolved like for every Prometheus tool, so on Mimir the
+multi-tenant Alertmanager is read with the caller's `X-Scope-OrgID`.
 
 ### Advanced
 

@@ -19,6 +19,10 @@ type PrometheusConfig struct {
 	// TLS configuration
 	TLSSkipVerify bool   // PROMETHEUS_TLS_SKIP_VERIFY — disable TLS certificate verification
 	TLSCACert     string // PROMETHEUS_TLS_CA_CERT — path to a PEM-encoded CA certificate file
+
+	// AlertmanagerURL is the Alertmanager base URL (ALERTMANAGER_URL); the
+	// Alertmanager tools share the authentication, TLS and tenant settings above.
+	AlertmanagerURL string
 }
 
 // TenancyResolver resolves Mimir tenant IDs from a set of authenticated user
@@ -111,6 +115,8 @@ func NewServerContext(ctx context.Context, opts ...ServerOption) (*ServerContext
 			OrgID:         os.Getenv("PROMETHEUS_ORGID"),
 			TLSSkipVerify: os.Getenv("PROMETHEUS_TLS_SKIP_VERIFY") == "true",
 			TLSCACert:     os.Getenv("PROMETHEUS_TLS_CA_CERT"),
+
+			AlertmanagerURL: os.Getenv("ALERTMANAGER_URL"),
 		}
 	}
 

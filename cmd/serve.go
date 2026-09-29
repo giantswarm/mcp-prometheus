@@ -62,6 +62,8 @@ Environment Variables:
   PROMETHEUS_USERNAME - Optional: Basic auth username
   PROMETHEUS_PASSWORD - Optional: Basic auth password
   PROMETHEUS_TOKEN    - Optional: Bearer token for authentication
+  ALERTMANAGER_URL    - Optional: Alertmanager base URL for get_alertmanager_alerts
+                        (Mimir: http://mimir-gateway.mimir/alertmanager); shares the auth above
 
 OAuth 2.1 (when --enable-oauth is set):
   MCP_OAUTH_ISSUER              - OAuth issuer URL (required)
@@ -207,6 +209,7 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 		"url", config.URL,
 		"auth", authMethod,
 		"org_id", config.OrgID,
+		"alertmanager_url", config.AlertmanagerURL,
 	)
 
 	// Initialise observability (metrics + tracing)
