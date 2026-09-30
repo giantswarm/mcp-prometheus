@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* Forwarded ID tokens from a private-IP Dex are validated by their signature. `MCP_OAUTH_ALLOW_PRIVATE_URLS` (`app.oauth.allowPrivateURLs`) relaxed only OIDC discovery, so the JWKS fetch for tokens muster forwards was refused as `DNS rebinding attack detected` and every call fell back to Dex's userinfo endpoint, with a WARN per call. The flag now also applies to that JWKS client (mcp-oauth `AllowPrivateIPJWKS`); with the flag off it stays SSRF-safe ([#293](https://github.com/giantswarm/mcp-prometheus/issues/293)).
 * OAuth with Valkey token storage waits for Valkey at start instead of exiting: while Valkey is not accepting connections yet (a credential rotation restarts both together), the server retries with backoff for up to 60 s, not ready meanwhile, rather than crash-looping; a wrong password still fails at once (mcp-oauth v1.4.9, giantswarm/mcp-oauth#591).
 
 * The chart applies `app.oauth.storage`. With `type: valkey` the server gets `OAUTH_STORAGE`, `VALKEY_URL`, `VALKEY_TLS_ENABLED` and `VALKEY_KEY_PREFIX` and keeps its OAuth clients and tokens in Valkey; before, the values were accepted and ignored, so the server kept them in memory and every restart signed everyone out. The new `app.oauth.storage.valkey.existingSecret` and `secretKeyPassword` read the Valkey password from an existing Secret, such as the one the Valkey deployment reads its ACL users from.

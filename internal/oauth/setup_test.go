@@ -341,6 +341,25 @@ func TestNewHandlerWithProviderShortEncryptionKey(t *testing.T) {
 	}
 }
 
+func TestServerConfigAllowPrivateIPJWKS(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		want bool
+	}{
+		{"dex, flag off stays SSRF-safe", Config{Provider: ProviderDex}, false},
+		{"dex, flag on allows the private JWKS", Config{Provider: ProviderDex, AllowPrivateURLs: true}, true},
+		{"google ignores the flag", Config{Provider: ProviderGoogle, AllowPrivateURLs: true}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := serverConfig(tt.cfg, nil).AllowPrivateIPJWKS; got != tt.want {
+				t.Errorf("AllowPrivateIPJWKS = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // --- Dex CA file (private-CA installations) ---
 
 func TestConfigFromEnvDexCAFile(t *testing.T) {

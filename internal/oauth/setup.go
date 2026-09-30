@@ -89,11 +89,11 @@ type Config struct {
 	// Google) and cryptographically valid.
 	TrustedAudiences []string
 
-	// AllowPrivateURLs permits OIDC discovery against Dex instances whose hostname
-	// resolves to a private/internal IP address (e.g. dex.<mc>.<baseDomain> on a
-	// private management cluster). When true, the HTTP client used for OIDC
-	// discovery bypasses the built-in SSRF protection that normally blocks
-	// connections to RFC-1918 ranges.
+	// AllowPrivateURLs permits OIDC discovery and the forwarded-ID-token JWKS
+	// fetch against Dex instances whose hostname resolves to a private/internal
+	// IP address (e.g. dex.<mc>.<baseDomain> on a private management cluster).
+	// When true, both HTTP clients bypass the built-in SSRF protection that
+	// normally blocks connections to RFC-1918 ranges.
 	//
 	// Set MCP_OAUTH_ALLOW_PRIVATE_URLS=true only in trusted internal environments
 	// where the Dex issuer URL uses internal DNS. TLS verification is still enforced.
@@ -325,21 +325,30 @@ func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cf
 		return nil, nil, err
 	}
 
-	serverCfg := &mcpoauth.ServerConfig{
-		Issuer:                        cfg.Issuer,
-		AllowPublicClientRegistration: cfg.AllowPublicRegistration,
-		AllowRefreshTokenRotation:     true,
-		TrustedAudiences:              cfg.TrustedAudiences,
-		JWKSRootCAs:                   rootCAs,
-	}
-
-	srv, err := mcpoauth.NewServer(provider, store, store, store, serverCfg, logger)
+	srv, err := mcpoauth.NewServer(provider, store, store, store, serverConfig(cfg, rootCAs), logger)
 	if err != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("oauth: create server: %w", err)
 	}
 
 	return handler.New(srv, logger), cleanup, nil
+}
+
+// serverConfig builds the mcp-oauth server configuration from cfg.
+// AllowPrivateURLs also relaxes the SSRF guard of the forwarded-ID-token JWKS
+// client: a private Dex serves its keys from the same private host as its
+// discovery document. The JWKS URL comes from the configured provider's
+// issuer, never from the token, so the allowance reaches that Dex only.
+// Google's JWKS endpoint is public, so the flag is not applied there.
+func serverConfig(cfg Config, rootCAs *x509.CertPool) *mcpoauth.ServerConfig {
+	return &mcpoauth.ServerConfig{
+		Issuer:                        cfg.Issuer,
+		AllowPublicClientRegistration: cfg.AllowPublicRegistration,
+		AllowRefreshTokenRotation:     true,
+		TrustedAudiences:              cfg.TrustedAudiences,
+		AllowPrivateIPJWKS:            cfg.AllowPrivateURLs && cfg.Provider != ProviderGoogle,
+		JWKSRootCAs:                   rootCAs,
+	}
 }
 
 // buildEncryptor returns the storage-layer Encryptor configured by cfg.

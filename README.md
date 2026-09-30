@@ -259,8 +259,10 @@ Refresh token rotation is enabled — every refresh issues a new refresh token.
 When `DEX_ISSUER_URL` uses an internal DNS name that resolves to a private IP (RFC-1918 range),
 the built-in SSRF protection in the OIDC discovery client would reject the connection.
 
-Set `MCP_OAUTH_ALLOW_PRIVATE_URLS=true` to inject an HTTP client that allows private-IP connections
-for OIDC discovery. TLS verification is still enforced.
+Set `MCP_OAUTH_ALLOW_PRIVATE_URLS=true` to allow private-IP connections to that Dex for OIDC
+discovery and for the JWKS fetch that validates forwarded ID tokens (`OAUTH_TRUSTED_AUDIENCES`,
+e.g. from muster). The JWKS URL comes from the configured Dex issuer, never from the token.
+TLS verification is still enforced.
 
 ```bash
 MCP_OAUTH_ALLOW_PRIVATE_URLS=true
@@ -588,7 +590,7 @@ When `DEX_ISSUER_URL` resolves to a private IP:
 app:
   oauth:
     enabled: true
-    allowPrivateURLs: true    # enables private-IP OIDC discovery
+    allowPrivateURLs: true    # private-IP Dex: OIDC discovery and forwarded-token JWKS
     dexClientSecret: "..."
     encryptionKey: "..."
 ```
