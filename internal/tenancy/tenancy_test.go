@@ -294,11 +294,11 @@ func TestGrafanaOrgGVR(t *testing.T) {
 	}
 }
 
-// Groups carried by a muster-minted (trusted-issuer) token are connector-prefixed
-// per install (e.g. "customer:Panamax_User"). The resolver matches RBAC entries
-// verbatim, so a GrafanaOrganization must list the prefixed form, and the bare
+// Groups carried by a forwarded Dex token are connector-prefixed per install
+// (e.g. "customer:Panamax_User"). The resolver matches RBAC entries verbatim,
+// so a GrafanaOrganization must list the prefixed form, and the bare
 // (unprefixed) group must not grant access. This locks the prefixed-group flow
-// from a trusted-issuer Bearer JWT through to tenant resolution.
+// from a forwarded Bearer JWT through to tenant resolution.
 func TestTenantsForGroupsConnectorPrefixed(t *testing.T) {
 	const prefixedGroup = "customer:Panamax_User"
 	org := grafanaOrg("customer-org", []string{prefixedGroup}, nil, nil, []string{tenantProdEU})

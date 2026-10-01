@@ -103,9 +103,9 @@ type Config struct {
 	// DexCAFile is the path to a PEM-encoded CA certificate file used to verify
 	// TLS for Dex and for JWKS endpoints. Required when Dex is served with a
 	// certificate from a private/internal CA (e.g. on private management
-	// clusters). The pool is passed explicitly to the Dex provider client, the
-	// forwarded-ID-token JWKS validation, and trusted-issuer JWKS clients —
-	// mcp-oauth does not read a CA installed on http.DefaultTransport.
+	// clusters). The pool is passed explicitly to the Dex provider client and
+	// the forwarded-ID-token JWKS validation — mcp-oauth does not read a CA
+	// installed on http.DefaultTransport.
 	// Empty means the system trust store alone is used. Dex only.
 	DexCAFile string
 }
@@ -313,7 +313,7 @@ func httpClientWithRootCAs(pool *x509.CertPool) *http.Client {
 // newHandlerWithProvider wires a pre-built provider into the mcp-oauth server.
 // It is separated from NewHandler so that tests can inject a mock provider
 // without requiring a live Dex instance. rootCAs verifies JWKS endpoint TLS
-// for forwarded-ID-token validation and trusted issuers; nil = system pool.
+// for forwarded-ID-token validation; nil = system pool.
 func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cfg Config, rootCAs *x509.CertPool, logger *slog.Logger) (*handler.Handler, func(), error) {
 	enc, err := buildEncryptor(cfg, logger)
 	if err != nil {
