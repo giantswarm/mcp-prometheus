@@ -6,7 +6,7 @@ require (
 	github.com/creativeprojects/go-selfupdate v1.6.0
 	github.com/giantswarm/mcp-oauth v1.4.13
 	github.com/giantswarm/selfupdate-cosign v0.3.2
-	github.com/mark3labs/mcp-go v1.0.0
+	github.com/mark3labs/mcp-go v1.1.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.72.0
 	github.com/spf13/cobra v1.10.2
