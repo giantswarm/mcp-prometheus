@@ -8,7 +8,7 @@ require (
 	github.com/giantswarm/selfupdate-cosign v0.3.0
 	github.com/mark3labs/mcp-go v1.0.0
 	github.com/prometheus/client_golang v1.24.1
-	github.com/prometheus/common v0.71.0
+	github.com/prometheus/common v0.72.0
 	github.com/spf13/cobra v1.10.2
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0
@@ -83,7 +83,7 @@ require (
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
+	github.com/prometheus/client_model v0.6.3 // indirect
 	github.com/prometheus/otlptranslator v1.0.0 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
