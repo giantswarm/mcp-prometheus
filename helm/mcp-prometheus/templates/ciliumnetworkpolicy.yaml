@@ -1,4 +1,21 @@
+{{- /*
+The server's network policy. Egress: the cluster (Prometheus, Mimir, Valkey)
+and, with OAuth, the world (the identity provider). Ingress: muster is the only
+client. A direct call would skip muster's sign-in, audit trail and per-user
+authorization, and Cilium policies are additive, so an open rule here (the
+cluster entity) could not be narrowed by any other policy. The policy admits:
+
+  - muster (ciliumNetworkPolicy.ingress.muster: its pods in its namespace),
+    the gateway's proxies (ciliumNetworkPolicy.ingress.gatewayPeers) while
+    the chart renders its HTTPRoute (gatewayAPI.enabled), and
+    ciliumNetworkPolicy.ingress.additionalPeers on the server port;
+  - ciliumNetworkPolicy.ingress.metricsScrapers on the metrics port while
+    monitoring is enabled;
+  - the kubelet's liveness and readiness probes on every port: they arrive
+    from the host entity.
+*/ -}}
 {{- if .Values.ciliumNetworkPolicy.enabled }}
+{{- $ingress := .Values.ciliumNetworkPolicy.ingress }}
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -22,8 +39,33 @@ spec:
     - world
   {{- end }}
   ingress:
+  - fromEndpoints:
+    - matchLabels:
+        {{- toYaml $ingress.muster.matchLabels | nindent 8 }}
+        io.kubernetes.pod.namespace: {{ $ingress.muster.namespace }}
+    {{- range (concat (ternary $ingress.gatewayPeers list .Values.gatewayAPI.enabled) $ingress.additionalPeers) }}
+    - matchLabels:
+        {{- toYaml .matchLabels | nindent 8 }}
+        io.kubernetes.pod.namespace: {{ .namespace }}
+    {{- end }}
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+  {{- if and .Values.monitoring.enabled $ingress.metricsScrapers }}
+  - fromEndpoints:
+    {{- range $ingress.metricsScrapers }}
+    - matchLabels:
+        {{- toYaml .matchLabels | nindent 8 }}
+        io.kubernetes.pod.namespace: {{ .namespace }}
+    {{- end }}
+    toPorts:
+    - ports:
+      - port: {{ regexFind "[0-9]+$" .Values.app.server.metricsAddr | quote }}
+        protocol: TCP
+  {{- end }}
   - fromEntities:
-    - cluster
+    - host
   endpointSelector:
     matchLabels:
       {{- include "mcp-prometheus.selectorLabels" . | nindent 6 }}
