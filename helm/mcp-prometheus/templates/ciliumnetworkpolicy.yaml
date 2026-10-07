@@ -6,7 +6,8 @@ authorization, and Cilium policies are additive, so an open rule here (the
 cluster entity) could not be narrowed by any other policy. The policy admits:
 
   - muster (ciliumNetworkPolicy.ingress.muster: its pods in its namespace),
-    the gateway's proxies (ciliumNetworkPolicy.ingress.gatewayPeers) while
+    the Teleport agent muster reaches a remote server through
+    (ciliumNetworkPolicy.ingress.teleportPeers), the gateway's proxies (ciliumNetworkPolicy.ingress.gatewayPeers) while
     the chart renders its HTTPRoute (gatewayAPI.enabled), and
     ciliumNetworkPolicy.ingress.additionalPeers on the server port;
   - ciliumNetworkPolicy.ingress.metricsScrapers on the metrics port while
@@ -43,7 +44,7 @@ spec:
     - matchLabels:
         {{- toYaml $ingress.muster.matchLabels | nindent 8 }}
         io.kubernetes.pod.namespace: {{ $ingress.muster.namespace }}
-    {{- range (concat (ternary $ingress.gatewayPeers list .Values.gatewayAPI.enabled) $ingress.additionalPeers) }}
+    {{- range (concat $ingress.teleportPeers (ternary $ingress.gatewayPeers list .Values.gatewayAPI.enabled) $ingress.additionalPeers) }}
     - matchLabels:
         {{- toYaml .matchLabels | nindent 8 }}
         io.kubernetes.pod.namespace: {{ .namespace }}

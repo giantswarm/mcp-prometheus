@@ -13,7 +13,7 @@ tests:
       - hasDocuments:
           count: 0
 
-  - it: admits muster from the agent-platform namespace on the server port by default
+  - it: admits muster from the agent-platform namespace and the Teleport agent on the server port by default
     asserts:
       - isKind:
           of: CiliumNetworkPolicy
@@ -24,6 +24,9 @@ tests:
               - matchLabels:
                   app.kubernetes.io/name: muster
                   io.kubernetes.pod.namespace: agent-platform
+              - matchLabels:
+                  app: teleport-kube-agent
+                  io.kubernetes.pod.namespace: kube-system
             toPorts:
               - ports:
                   - port: "8080"
@@ -55,6 +58,9 @@ tests:
             - matchLabels:
                 app.kubernetes.io/name: muster
                 io.kubernetes.pod.namespace: muster
+            - matchLabels:
+                app: teleport-kube-agent
+                io.kubernetes.pod.namespace: kube-system
 
   - it: admits additional peers on the server port only
     set:
@@ -64,14 +70,14 @@ tests:
             app.kubernetes.io/name: envoy
     asserts:
       - equal:
-          path: spec.ingress[0].fromEndpoints[1]
+          path: spec.ingress[0].fromEndpoints[2]
           value:
             matchLabels:
               app.kubernetes.io/name: envoy
               io.kubernetes.pod.namespace: envoy-gateway-system
       - lengthEqual:
           path: spec.ingress[0].fromEndpoints
-          count: 2
+          count: 3
       - lengthEqual:
           path: spec.ingress[1].fromEndpoints
           count: 1
@@ -90,6 +96,9 @@ tests:
                 app.kubernetes.io/name: muster
                 io.kubernetes.pod.namespace: agent-platform
             - matchLabels:
+                app: teleport-kube-agent
+                io.kubernetes.pod.namespace: kube-system
+            - matchLabels:
                 app.kubernetes.io/name: envoy
                 io.kubernetes.pod.namespace: envoy-gateway-system
       - lengthEqual:
@@ -100,7 +109,7 @@ tests:
     asserts:
       - lengthEqual:
           path: spec.ingress[0].fromEndpoints
-          count: 1
+          count: 2
 
   - it: admits the metrics scrapers on the metrics port by default
     asserts:
@@ -144,6 +153,17 @@ tests:
       - lengthEqual:
           path: spec.ingress
           count: 2
+
+  - it: admits no Teleport agent with an empty list
+    set:
+      ciliumNetworkPolicy.ingress.teleportPeers: []
+    asserts:
+      - equal:
+          path: spec.ingress[0].fromEndpoints
+          value:
+            - matchLabels:
+                app.kubernetes.io/name: muster
+                io.kubernetes.pod.namespace: agent-platform
 
   - it: refuses a peer without a namespace
     set:
