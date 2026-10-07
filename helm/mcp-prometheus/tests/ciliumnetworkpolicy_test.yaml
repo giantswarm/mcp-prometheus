@@ -1,0 +1,187 @@
+# The CiliumNetworkPolicy admits muster's pods from muster's namespace on the
+# server port, nothing else from the cluster: an open ingress (the cluster
+# entity) would let any pod skip muster, and Cilium policies are additive, so
+# no other policy could narrow it.
+suite: CiliumNetworkPolicy tests
+templates:
+  - templates/ciliumnetworkpolicy.yaml
+tests:
+  - it: renders nothing when disabled
+    set:
+      ciliumNetworkPolicy.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: admits muster from the agent-platform namespace on the server port by default
+    asserts:
+      - isKind:
+          of: CiliumNetworkPolicy
+      - equal:
+          path: spec.ingress[0]
+          value:
+            fromEndpoints:
+              - matchLabels:
+                  app.kubernetes.io/name: muster
+                  io.kubernetes.pod.namespace: agent-platform
+            toPorts:
+              - ports:
+                  - port: "8080"
+                    protocol: TCP
+
+  - it: admits no entity but the host, for the kubelet's probes
+    asserts:
+      - notContains:
+          path: spec.ingress
+          content:
+            fromEntities:
+              - cluster
+      - contains:
+          path: spec.ingress
+          content:
+            fromEntities:
+              - host
+      - lengthEqual:
+          path: spec.ingress
+          count: 3
+
+  - it: admits muster from an overridden namespace
+    set:
+      ciliumNetworkPolicy.ingress.muster.namespace: muster
+    asserts:
+      - equal:
+          path: spec.ingress[0].fromEndpoints
+          value:
+            - matchLabels:
+                app.kubernetes.io/name: muster
+                io.kubernetes.pod.namespace: muster
+
+  - it: admits additional peers on the server port only
+    set:
+      ciliumNetworkPolicy.ingress.additionalPeers:
+        - namespace: envoy-gateway-system
+          matchLabels:
+            app.kubernetes.io/name: envoy
+    asserts:
+      - equal:
+          path: spec.ingress[0].fromEndpoints[1]
+          value:
+            matchLabels:
+              app.kubernetes.io/name: envoy
+              io.kubernetes.pod.namespace: envoy-gateway-system
+      - lengthEqual:
+          path: spec.ingress[0].fromEndpoints
+          count: 2
+      - lengthEqual:
+          path: spec.ingress[1].fromEndpoints
+          count: 1
+
+  - it: admits the gateway's proxies on the server port while the HTTPRoute renders
+    set:
+      gatewayAPI.enabled: true
+      gatewayAPI.httpRoute.parentRefs:
+        - name: giantswarm-default
+          namespace: envoy-gateway-system
+    asserts:
+      - equal:
+          path: spec.ingress[0].fromEndpoints
+          value:
+            - matchLabels:
+                app.kubernetes.io/name: muster
+                io.kubernetes.pod.namespace: agent-platform
+            - matchLabels:
+                app.kubernetes.io/name: envoy
+                io.kubernetes.pod.namespace: envoy-gateway-system
+      - lengthEqual:
+          path: spec.ingress
+          count: 3
+
+  - it: admits no gateway proxy without the HTTPRoute
+    asserts:
+      - lengthEqual:
+          path: spec.ingress[0].fromEndpoints
+          count: 1
+
+  - it: admits the metrics scrapers on the metrics port by default
+    asserts:
+      - equal:
+          path: spec.ingress[1]
+          value:
+            fromEndpoints:
+              - matchLabels:
+                  app.kubernetes.io/instance: alloy-metrics
+                  io.kubernetes.pod.namespace: kube-system
+            toPorts:
+              - ports:
+                  - port: "9091"
+                    protocol: TCP
+
+  - it: follows the configured metrics address
+    set:
+      app.server.metricsAddr: ":9100"
+    asserts:
+      - equal:
+          path: spec.ingress[1].toPorts[0].ports[0].port
+          value: "9100"
+
+  - it: admits no scraper while monitoring is disabled
+    set:
+      monitoring.enabled: false
+    asserts:
+      - lengthEqual:
+          path: spec.ingress
+          count: 2
+      - equal:
+          path: spec.ingress[1]
+          value:
+            fromEntities:
+              - host
+
+  - it: admits no scraper without a scrapers list
+    set:
+      ciliumNetworkPolicy.ingress.metricsScrapers: []
+    asserts:
+      - lengthEqual:
+          path: spec.ingress
+          count: 2
+
+  - it: refuses a peer without a namespace
+    set:
+      ciliumNetworkPolicy.ingress.additionalPeers:
+        - matchLabels:
+            app.kubernetes.io/name: envoy
+    asserts:
+      - failedTemplate: {}
+
+  - it: keeps the egress and the endpoint selector
+    asserts:
+      - equal:
+          path: spec.egress
+          value:
+            - toEntities:
+                - cluster
+      - equal:
+          path: spec.endpointSelector.matchLabels
+          value:
+            app.kubernetes.io/name: mcp-prometheus
+            app.kubernetes.io/instance: RELEASE-NAME
+
+  - it: keeps the world egress with OAuth
+    set:
+      app.oauth.enabled: true
+    asserts:
+      - contains:
+          path: spec.egress
+          content:
+            toEntities:
+              - world
+
+  - it: carries the configured annotations
+    set:
+      ciliumNetworkPolicy.annotations:
+        example.com/owner: bumblebee
+    asserts:
+      - equal:
+          path: metadata.annotations
+          value:
+            example.com/owner: bumblebee

@@ -92,6 +92,13 @@ changed credential restarts the server:
 | ciliumNetworkPolicy.enabled | bool | `true` |  |
 | ciliumNetworkPolicy.labels | object | `{}` |  |
 | ciliumNetworkPolicy.annotations | object | `{}` |  |
+| ciliumNetworkPolicy.ingress.muster.namespace | string | `"agent-platform"` |  |
+| ciliumNetworkPolicy.ingress.muster.matchLabels."app.kubernetes.io/name" | string | `"muster"` |  |
+| ciliumNetworkPolicy.ingress.metricsScrapers[0].namespace | string | `"kube-system"` |  |
+| ciliumNetworkPolicy.ingress.metricsScrapers[0].matchLabels."app.kubernetes.io/instance" | string | `"alloy-metrics"` |  |
+| ciliumNetworkPolicy.ingress.gatewayPeers[0].namespace | string | `"envoy-gateway-system"` |  |
+| ciliumNetworkPolicy.ingress.gatewayPeers[0].matchLabels."app.kubernetes.io/name" | string | `"envoy"` |  |
+| ciliumNetworkPolicy.ingress.additionalPeers | list | `[]` |  |
 | monitoring.enabled | bool | `true` |  |
 | monitoring.serviceMonitor.enabled | bool | `false` |  |
 | monitoring.serviceMonitor.labels | object | `{}` |  |

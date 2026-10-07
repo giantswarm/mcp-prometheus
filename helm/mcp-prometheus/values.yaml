@@ -103,8 +103,42 @@ volumeMounts:
 
 ciliumNetworkPolicy:
   enabled: true
-  labels: {}
-  annotations: {}
+  labels: {}  # @schema additionalProperties: true
+  annotations: {}  # @schema additionalProperties: true
+  # Ingress to the server. Muster is the only client: a direct call would skip
+  # its sign-in, audit trail and per-user authorization, and Cilium policies
+  # are additive, so an open rule here could not be narrowed by another policy.
+  # The policy admits `muster`, `gatewayPeers` (while gatewayAPI.enabled) and
+  # `additionalPeers` on the server port, the
+  # `metricsScrapers` on the port of app.server.metricsAddr while monitoring is
+  # enabled, and the kubelet's probes (the host entity) on every port. Each
+  # peer is a namespace and the labels of its pods.
+  ingress:
+    # The muster this server is registered with.
+    muster:
+      namespace: agent-platform  # @schema minLength: 1
+      matchLabels:  # @schema type: object; minProperties: 1; additionalProperties: {"type": "string"}; skipProperties: true
+        app.kubernetes.io/name: muster
+    # The metrics collectors admitted on the metrics port: the observability
+    # platform's alloy-metrics by default.
+    metricsScrapers:  # @schema item: object; itemRequired: [namespace, matchLabels]; itemProperties: {"namespace": {"type": "string", "minLength": 1}, "matchLabels": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string"}}}
+      - namespace: kube-system
+        matchLabels:
+          app.kubernetes.io/instance: alloy-metrics
+    # The proxies of the Gateway the HTTPRoute attaches to, admitted on the
+    # server port while gatewayAPI.enabled: Envoy Gateway's by default.
+    gatewayPeers:  # @schema item: object; itemRequired: [namespace, matchLabels]; itemProperties: {"namespace": {"type": "string", "minLength": 1}, "matchLabels": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string"}}}
+      - namespace: envoy-gateway-system
+        matchLabels:
+          app.kubernetes.io/name: envoy
+    # Further clients admitted on the server port, e.g. the ingress controller
+    # in front of a public route (ingress.enabled).
+    # Example:
+    #   additionalPeers:
+    #     - namespace: ingress-nginx
+    #       matchLabels:
+    #         app.kubernetes.io/name: ingress-nginx
+    additionalPeers: []  # @schema item: object; itemRequired: [namespace, matchLabels]; itemProperties: {"namespace": {"type": "string", "minLength": 1}, "matchLabels": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string"}}}
 
 # Monitoring configuration
 monitoring:
