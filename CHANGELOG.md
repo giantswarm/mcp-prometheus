@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* The chart's CiliumNetworkPolicy admits the Teleport agent of the cluster on the server port (`ciliumNetworkPolicy.ingress.teleportPeers`, default `app: teleport-kube-agent` in `kube-system`): a muster on another cluster reaches this server through Teleport application access, and the policy had dropped those calls.
+
 * Forwarded ID tokens from a private-IP Dex are validated by their signature. `MCP_OAUTH_ALLOW_PRIVATE_URLS` (`app.oauth.allowPrivateURLs`) relaxed only OIDC discovery, so the JWKS fetch for tokens muster forwards was refused as `DNS rebinding attack detected` and every call fell back to Dex's userinfo endpoint, with a WARN per call. The flag now also applies to that JWKS client (mcp-oauth `AllowPrivateIPJWKS`); with the flag off it stays SSRF-safe ([#293](https://github.com/giantswarm/mcp-prometheus/issues/293)).
 * OAuth with Valkey token storage waits for Valkey at start instead of exiting: while Valkey is not accepting connections yet (a credential rotation restarts both together), the server retries with backoff for up to 60 s, not ready meanwhile, rather than crash-looping; a wrong password still fails at once (mcp-oauth v1.4.9, giantswarm/mcp-oauth#591).
 
