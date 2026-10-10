@@ -118,8 +118,8 @@ github.com/fxamacker/cbor/v2 v2.9.1 h1:2rWm8B193Ll4VdjsJY28jxs70IdDsHRWgQYAI80+r
 github.com/fxamacker/cbor/v2 v2.9.1/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/giantswarm/go-selfupdate v1.6.1 h1:RFmqWt7xjTReWocxuiW6uSD4Fsfp57P0SKsfrskx5bQ=
 github.com/giantswarm/go-selfupdate v1.6.1/go.mod h1:AafABggDiXjWkAeF1LFJOx3A+Q9vPyrQcg5JdGLLLOE=
-github.com/giantswarm/mcp-oauth v1.6.0 h1:aL1i9aRgXs28tY2LEThDkgChaSLJBDKX5LW3eqlxsy4=
-github.com/giantswarm/mcp-oauth v1.6.0/go.mod h1:/qsorGcyP82HF68pxavC0slW5Cru0ziIRZ9C8DcS/eg=
+github.com/giantswarm/mcp-oauth v1.7.0 h1:6tgm7OLs8Eo3iksAFrhuFHfdha7hxJqwMq06fDsqUZs=
+github.com/giantswarm/mcp-oauth v1.7.0/go.mod h1:/qsorGcyP82HF68pxavC0slW5Cru0ziIRZ9C8DcS/eg=
 github.com/giantswarm/selfupdate-cosign v0.3.4 h1:JytcotX4WxQPXhJUmeJ70Dz/cKHsv+WtxY+nT95S5JI=
 github.com/giantswarm/selfupdate-cosign v0.3.4/go.mod h1:IbcSMJJIErhK4ioKVGJUAnc4ikBcDG43v70IZByHQs0=
 github.com/go-chi/chi/v5 v5.3.0 h1:halUjDxhshgXHMrao5bB8eNBXo/rnzwr8m5m36glehM=
