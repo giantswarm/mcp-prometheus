@@ -3,9 +3,9 @@ module github.com/giantswarm/mcp-prometheus
 go 1.26.0
 
 require (
-	github.com/creativeprojects/go-selfupdate v1.6.0
+	github.com/giantswarm/go-selfupdate v1.6.1
 	github.com/giantswarm/mcp-oauth v1.6.0
-	github.com/giantswarm/selfupdate-cosign v0.3.2
+	github.com/giantswarm/selfupdate-cosign v0.3.4
 	github.com/mark3labs/mcp-go v1.1.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.72.0
@@ -24,11 +24,13 @@ require (
 	code.gitea.io/sdk/gitea v0.23.2 // indirect
 	github.com/42wim/httpsig v1.2.4 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
+	github.com/ProtonMail/go-crypto v1.4.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/davidmz/go-pageant v1.0.2 // indirect
