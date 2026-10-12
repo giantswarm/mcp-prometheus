@@ -26,11 +26,17 @@ type PrometheusConfig struct {
 }
 
 // TenancyResolver resolves Mimir tenant IDs from a set of authenticated user
-// groups.  It is implemented by [tenancy.Resolver] and exposed here as an
-// interface to avoid a direct import cycle between the server and tenancy
-// packages.
+// groups.  It is implemented by [tenancy.Resolver] and [tenancy.StaticResolver]
+// and exposed here as an interface to avoid a direct import cycle between the
+// server and tenancy packages.
 type TenancyResolver interface {
+	// TenantsForGroups returns every tenant the groups grant access to,
+	// sorted: the set Mimir's querier federates in one request.
 	TenantsForGroups(ctx context.Context, groups []string) ([]string, error)
+	// AlertingTenantsForGroups returns the tenants of TenantsForGroups that
+	// carry alerting, sorted: the ones Mimir's ruler and Alertmanager, which
+	// serve one tenant per request, may be read for.
+	AlertingTenantsForGroups(ctx context.Context, groups []string) ([]string, error)
 }
 
 // ServerContext holds the server configuration and shared resources

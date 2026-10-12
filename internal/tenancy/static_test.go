@@ -36,6 +36,18 @@ func TestStaticResolver_AllUsersMode_NilGroups(t *testing.T) {
 	}
 }
 
+// A static configuration carries no tenant types: every tenant is alerting.
+func TestStaticResolver_AlertingTenantsAreAllTenants(t *testing.T) {
+	r := NewStaticResolver(nil, map[string][]string{groupTeamOps: {tenantProdUS, tenantProdEU}})
+	tenants, err := r.AlertingTenantsForGroups(context.Background(), []string{groupTeamOps})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tenants) != 2 || tenants[0] != tenantProdEU || tenants[1] != tenantProdUS {
+		t.Errorf("got %v, want [prod-eu prod-us]", tenants)
+	}
+}
+
 func TestStaticResolver_AllUsersMode_EmptyGroupMap(t *testing.T) {
 	r := NewStaticResolver([]string{tenantProdEU}, map[string][]string{})
 	tenants, err := r.TenantsForGroups(context.Background(), []string{groupTeamOps})

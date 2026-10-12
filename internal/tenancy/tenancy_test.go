@@ -2,6 +2,8 @@ package tenancy
 
 import (
 	"context"
+	"reflect"
+	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -12,9 +14,22 @@ import (
 
 // helpers
 
-const nameKey = "name"
+const (
+	nameKey = "name"
+	pipeAB  = "a|b" // the federated selector of tenants a and b
+)
 
 func grafanaOrg(name string, admins, editors, viewers []string, tenantNames []string) *unstructured.Unstructured {
+	tenants := make([]Tenant, len(tenantNames))
+	for i, n := range tenantNames {
+		tenants[i] = Tenant{Name: n}
+	}
+	return grafanaOrgTyped(name, admins, editors, viewers, tenants)
+}
+
+// grafanaOrgTyped is grafanaOrg with the tenants' types; a tenant without
+// types is written without the field.
+func grafanaOrgTyped(name string, admins, editors, viewers []string, typed []Tenant) *unstructured.Unstructured {
 	toIface := func(ss []string) []interface{} {
 		out := make([]interface{}, len(ss))
 		for i, s := range ss {
@@ -22,9 +37,13 @@ func grafanaOrg(name string, admins, editors, viewers []string, tenantNames []st
 		}
 		return out
 	}
-	tenants := make([]interface{}, len(tenantNames))
-	for i, t := range tenantNames {
-		tenants[i] = map[string]interface{}{nameKey: t}
+	tenants := make([]interface{}, len(typed))
+	for i, t := range typed {
+		tenant := map[string]interface{}{nameKey: t.Name}
+		if len(t.Types) > 0 {
+			tenant["types"] = toIface(t.Types)
+		}
+		tenants[i] = tenant
 	}
 	rbac := map[string]interface{}{}
 	if len(admins) > 0 {
@@ -104,8 +123,8 @@ func TestSelectOrgIDMultiTenantNoOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "a|b" {
-		t.Errorf("expected %q, got %q", "a|b", got)
+	if got != pipeAB {
+		t.Errorf("expected %q, got %q", pipeAB, got)
 	}
 }
 
@@ -128,12 +147,12 @@ func TestSelectOrgIDInvalidOverride(t *testing.T) {
 
 func TestSelectOrgIDPipeSeparatedValid(t *testing.T) {
 	// Pipe-separated override where all parts are in allowed list.
-	got, err := SelectOrgID([]string{"a", "b", "c"}, "a|b")
+	got, err := SelectOrgID([]string{"a", "b", "c"}, pipeAB)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "a|b" {
-		t.Errorf("expected %q, got %q", "a|b", got)
+	if got != pipeAB {
+		t.Errorf("expected %q, got %q", pipeAB, got)
 	}
 }
 
@@ -142,6 +161,172 @@ func TestSelectOrgIDPipeSeparatedInvalid(t *testing.T) {
 	_, err := SelectOrgID([]string{"a", "b"}, "a|z")
 	if err == nil {
 		t.Error("expected error when one pipe-separated part is not in allowed list")
+	}
+}
+
+func TestSelectOrgIDNormalizesOverride(t *testing.T) {
+	// A pipe-separated override is sent trimmed and deduplicated.
+	got, err := SelectOrgID([]string{"a", "b", "c"}, " a | b |a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != pipeAB {
+		t.Errorf("expected %q, got %q", pipeAB, got)
+	}
+}
+
+// --- SelectOrgIDs ---
+
+func TestSelectOrgIDsNoTenants(t *testing.T) {
+	if _, err := SelectOrgIDs(nil, ""); err == nil {
+		t.Error("expected error for empty tenant list")
+	}
+}
+
+func TestSelectOrgIDsNoOverride(t *testing.T) {
+	// Every tenant, one request each, in a copy of the list.
+	tenants := []string{"a", "b"}
+	got, err := SelectOrgIDs(tenants, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, tenants) {
+		t.Errorf("expected %v, got %v", tenants, got)
+	}
+	got[0] = overwrittenMark
+	if tenants[0] != "a" {
+		t.Error("SelectOrgIDs returned the caller's slice, not a copy")
+	}
+}
+
+func TestSelectOrgIDsOverride(t *testing.T) {
+	tests := []struct {
+		override string
+		want     []string
+	}{
+		{"b", []string{"b"}},
+		{pipeAB, []string{"a", "b"}},
+		{" b | a ", []string{"b", "a"}},
+		{"a|a", []string{"a"}},
+	}
+	for _, tt := range tests {
+		got, err := SelectOrgIDs([]string{"a", "b", "c"}, tt.override)
+		if err != nil {
+			t.Fatalf("override %q: %v", tt.override, err)
+		}
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("override %q: expected %v, got %v", tt.override, tt.want, got)
+		}
+	}
+}
+
+func TestSelectOrgIDsInvalidOverride(t *testing.T) {
+	// The error names the tenants the caller may address.
+	_, err := SelectOrgIDs([]string{"a", "b"}, "a|z")
+	if err == nil || !strings.Contains(err.Error(), `"z"`) || !strings.Contains(err.Error(), "(a, b)") {
+		t.Errorf("expected an error naming the part and the tenants, got %v", err)
+	}
+}
+
+// --- Tenant types ---
+
+func TestTenantHasType(t *testing.T) {
+	tests := []struct {
+		types          []string
+		data, alerting bool
+	}{
+		{nil, true, false}, // the CRD's default
+		{[]string{TenantTypeData}, true, false},
+		{[]string{TenantTypeAlerting}, false, true},
+		{[]string{TenantTypeData, TenantTypeAlerting}, true, true},
+	}
+	for _, tt := range tests {
+		tenant := Tenant{Name: tenantProdEU, Types: tt.types}
+		if got := tenant.HasType(TenantTypeData); got != tt.data {
+			t.Errorf("types %v: HasType(data) = %v, want %v", tt.types, got, tt.data)
+		}
+		if got := tenant.HasType(TenantTypeAlerting); got != tt.alerting {
+			t.Errorf("types %v: HasType(alerting) = %v, want %v", tt.types, got, tt.alerting)
+		}
+	}
+}
+
+// An organisation with one alerting tenant: the Alertmanager reads it alone.
+func TestAlertingTenantsForGroupsOne(t *testing.T) {
+	org := grafanaOrgTyped("my-org", []string{groupTeamOps}, nil, nil, []Tenant{
+		{Name: tenantProdEU, Types: []string{TenantTypeData, TenantTypeAlerting}},
+	})
+	r := newTestResolver(org)
+
+	got, err := r.AlertingTenantsForGroups(context.Background(), []string{groupTeamOps})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{tenantProdEU}; !reflect.DeepEqual(got, want) {
+		t.Errorf("expected %v, got %v", want, got)
+	}
+}
+
+// Data-only tenants beside an alerting one: the querier federates all of
+// them, the Alertmanager sees the alerting one only. One data-only tenant
+// lists no types, the CRD's default.
+func TestAlertingTenantsForGroupsDataOnlyExcluded(t *testing.T) {
+	org := grafanaOrgTyped("my-org", []string{groupTeamOps}, nil, nil, []Tenant{
+		{Name: tenantProdEU, Types: []string{TenantTypeData, TenantTypeAlerting}},
+		{Name: tenantStaging},
+		{Name: tenantProdUS, Types: []string{TenantTypeData}},
+	})
+	r := newTestResolver(org)
+
+	all, err := r.TenantsForGroups(context.Background(), []string{groupTeamOps})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{tenantProdEU, tenantProdUS, tenantStaging}; !reflect.DeepEqual(all, want) {
+		t.Errorf("TenantsForGroups: expected %v, got %v", want, all)
+	}
+
+	alerting, err := r.AlertingTenantsForGroups(context.Background(), []string{groupTeamOps})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{tenantProdEU}; !reflect.DeepEqual(alerting, want) {
+		t.Errorf("AlertingTenantsForGroups: expected %v, got %v", want, alerting)
+	}
+}
+
+// Several alerting tenants across organisations, one of them alerting in
+// one organisation only: all of them, sorted and deduplicated.
+func TestAlertingTenantsForGroupsSeveral(t *testing.T) {
+	org1 := grafanaOrgTyped("org1", []string{groupTeamOps}, nil, nil, []Tenant{
+		{Name: tenantProdUS, Types: []string{TenantTypeAlerting}},
+		{Name: tenantStaging, Types: []string{TenantTypeData}},
+	})
+	org2 := grafanaOrgTyped("org2", nil, []string{groupTeamOps}, nil, []Tenant{
+		{Name: tenantProdEU, Types: []string{TenantTypeData, TenantTypeAlerting}},
+		{Name: tenantStaging, Types: []string{TenantTypeAlerting}},
+	})
+	r := newTestResolver(org1, org2)
+
+	got, err := r.AlertingTenantsForGroups(context.Background(), []string{groupTeamOps})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{tenantProdEU, tenantProdUS, tenantStaging}; !reflect.DeepEqual(got, want) {
+		t.Errorf("expected %v, got %v", want, got)
+	}
+}
+
+func TestAlertingTenantsForGroupsNone(t *testing.T) {
+	org := grafanaOrgTyped("my-org", []string{groupTeamOps}, nil, nil, []Tenant{{Name: tenantProdEU}})
+	r := newTestResolver(org)
+
+	got, err := r.AlertingTenantsForGroups(context.Background(), []string{groupTeamOps})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected no alerting tenant, got %v", got)
 	}
 }
 

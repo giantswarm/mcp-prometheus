@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/giantswarm/mcp-prometheus/internal/server"
 )
@@ -37,7 +39,8 @@ const alertmanagerAdvice = `
 
 💡 To narrow the result, filter on the Alertmanager side:
    • "filter" with label matchers, e.g. ["team=\"bumblebee\"", "severity=\"page\""]
-   • "receiver" with a receiver name or regex, e.g. "pager"`
+   • "receiver" with a receiver name or regex, e.g. "pager"
+   • "org_id" with one tenant when several were read`
 
 // AlertmanagerAlertsOptions narrows a GetAlertmanagerAlerts call. Both fields
 // map onto query parameters of GET /api/v2/alerts and are applied by the
@@ -69,7 +72,9 @@ func (o AlertmanagerAlertsOptions) queryValues() url.Values {
 
 // AlertmanagerAlert is one alert as get_alertmanager_alerts returns it.
 type AlertmanagerAlert struct {
-	Fingerprint string            `json:"fingerprint"`
+	Fingerprint string `json:"fingerprint"`
+	// Tenant is the X-Scope-OrgID the alert was read with, when there is one.
+	Tenant      string            `json:"tenant,omitempty"`
 	Alertname   string            `json:"alertname,omitempty"`
 	Severity    string            `json:"severity,omitempty"`
 	StartsAt    time.Time         `json:"startsAt"`
@@ -134,10 +139,16 @@ func (c *Client) GetAlertmanagerAlerts(ctx context.Context, options Alertmanager
 		}
 		alerts = append(alerts, a)
 	}
-	slices.SortFunc(alerts, func(a, b AlertmanagerAlert) int {
-		return cmp.Or(a.StartsAt.Compare(b.StartsAt), cmp.Compare(a.Fingerprint, b.Fingerprint))
-	})
+	sortAlertmanagerAlerts(alerts)
 	return alerts, nil
+}
+
+// sortAlertmanagerAlerts orders alerts oldest first, ties by fingerprint,
+// then by tenant.
+func sortAlertmanagerAlerts(alerts []AlertmanagerAlert) {
+	slices.SortFunc(alerts, func(a, b AlertmanagerAlert) int {
+		return cmp.Or(a.StartsAt.Compare(b.StartsAt), cmp.Compare(a.Fingerprint, b.Fingerprint), cmp.Compare(a.Tenant, b.Tenant))
+	})
 }
 
 // truncateBody bounds an error body quoted in an error message.
@@ -149,57 +160,113 @@ func truncateBody(body []byte) string {
 	return string(body)
 }
 
-// createAlertmanagerClient builds a client for the Alertmanager named by the
-// alertmanager_url parameter or ALERTMANAGER_URL. It inherits the Prometheus
-// authentication and TLS settings and resolves the tenant exactly like the
-// Prometheus tools.
-func createAlertmanagerClient(ctx context.Context, params map[string]any, sc *server.ServerContext) (*Client, error) {
+// alertmanagerConfig is the client configuration for the Alertmanager named
+// by the alertmanager_url parameter or ALERTMANAGER_URL. It inherits the
+// Prometheus authentication, TLS and default tenant settings.
+func alertmanagerConfig(params map[string]any, sc *server.ServerContext) (server.PrometheusConfig, error) {
 	config := sc.PrometheusConfig()
 
 	if u := getStringParam(params, paramAlertmanagerURL); u != "" {
 		if err := validateURL(paramAlertmanagerURL, u); err != nil {
-			return nil, err
+			return server.PrometheusConfig{}, err
 		}
 		config.AlertmanagerURL = u
 	}
 	if config.AlertmanagerURL == "" {
-		return nil, fmt.Errorf("%s parameter is required (ALERTMANAGER_URL is not set)", paramAlertmanagerURL)
+		return server.PrometheusConfig{}, fmt.Errorf("%s parameter is required (ALERTMANAGER_URL is not set)", paramAlertmanagerURL)
 	}
 	config.URL = config.AlertmanagerURL
+	return config, nil
+}
 
-	orgID, err := resolveTenantOrgID(ctx, sc, getStringParam(params, "org_id"))
-	if err != nil {
+// tenantsToRead is the X-Scope-OrgID value for each selected org ID, the
+// configured default tenant standing in for an empty one ("" when there is
+// none either: the Alertmanager is read without a tenant).
+func tenantsToRead(orgIDs []string, defaultOrgID string) []string {
+	tenants := make([]string, len(orgIDs))
+	for i, id := range orgIDs {
+		tenants[i] = cmp.Or(id, defaultOrgID)
+	}
+	return tenants
+}
+
+// getAlertmanagerAlertsForTenants reads the Alertmanager of every tenant
+// concurrently, a client per tenant (a configuration copy and its round
+// trippers, no connection of its own), and merges the alerts, each marked with
+// its tenant, oldest first. Mimir's Alertmanager serves one tenant per
+// request, so this is how several tenants are read at all. One tenant's
+// failure fails the call and names the tenant: a partial alert list would
+// hide an outage.
+func getAlertmanagerAlertsForTenants(ctx context.Context, config server.PrometheusConfig, tenants []string, options AlertmanagerAlertsOptions, logger *slog.Logger) ([]AlertmanagerAlert, error) {
+	results := make([][]AlertmanagerAlert, len(tenants))
+	g, ctx := errgroup.WithContext(ctx)
+	for i, tenant := range tenants {
+		g.Go(func() error {
+			cfg := config
+			cfg.OrgID = tenant
+			client, err := NewClient(cfg, logger)
+			if err != nil {
+				return tenantError(tenant, err)
+			}
+			alerts, err := client.GetAlertmanagerAlerts(ctx, options)
+			if err != nil {
+				return tenantError(tenant, err)
+			}
+			for j := range alerts {
+				alerts[j].Tenant = tenant
+			}
+			results[i] = alerts
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	if orgID != "" {
-		config.OrgID = orgID
-	}
 
-	return NewClient(config, sc.Logger())
+	merged := make([]AlertmanagerAlert, 0)
+	for _, alerts := range results {
+		merged = append(merged, alerts...)
+	}
+	sortAlertmanagerAlerts(merged)
+	return merged, nil
+}
+
+// tenantError names the tenant an Alertmanager call failed for.
+func tenantError(tenant string, err error) error {
+	if tenant == "" {
+		return err
+	}
+	return fmt.Errorf("tenant %s: %w", tenant, err)
 }
 
 // handleGetAlertmanagerAlerts handles the get_alertmanager_alerts tool.
 func handleGetAlertmanagerAlerts(ctx context.Context, request mcp.CallToolRequest, sc *server.ServerContext) (*mcp.CallToolResult, error) {
 	params := extractParams(request)
 
-	client, err := createAlertmanagerClient(ctx, params, sc)
+	config, err := alertmanagerConfig(params, sc)
 	if err != nil {
 		return errorResult(fmt.Sprintf("Error creating Alertmanager client: %v", err)), nil
 	}
+	orgIDs, err := resolveAlertingOrgIDs(ctx, sc, getStringParam(params, paramOrgID))
+	if err != nil {
+		return errorResult(fmt.Sprintf("Error creating Alertmanager client: %v", err)), nil
+	}
+	tenants := tenantsToRead(orgIDs, config.OrgID)
 
-	alerts, err := client.GetAlertmanagerAlerts(ctx, AlertmanagerAlertsOptions{
+	alerts, err := getAlertmanagerAlertsForTenants(ctx, config, tenants, AlertmanagerAlertsOptions{
 		Receiver: getStringParam(params, paramReceiver),
 		Filter:   extractStringArray(params, paramFilter),
-	})
+	}, sc.Logger())
 	if err != nil {
 		sc.Logger().Error("Failed to get alertmanager alerts", "error", err)
 		return errorResult(fmt.Sprintf("Error getting Alertmanager alerts: %v", err)), nil
 	}
 
 	out, err := json.Marshal(struct {
-		Count  int                 `json:"count"`
-		Alerts []AlertmanagerAlert `json:"alerts"`
-	}{len(alerts), alerts})
+		Count   int                 `json:"count"`
+		Tenants []string            `json:"tenants,omitempty"`
+		Alerts  []AlertmanagerAlert `json:"alerts"`
+	}{len(alerts), slices.DeleteFunc(tenants, func(t string) bool { return t == "" }), alerts})
 	if err != nil {
 		return errorResult(fmt.Sprintf("Error encoding Alertmanager alerts: %v", err)), nil
 	}
