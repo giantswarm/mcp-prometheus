@@ -73,7 +73,7 @@ The server listens on two ports:
 
 ### Pre-built binaries
 
-Download the latest release from the [releases page](../../releases).
+Download the latest release from the [releases page](https://github.com/giantswarm/mcp-prometheus/releases).
 
 ### From source
 
