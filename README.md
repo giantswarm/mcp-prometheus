@@ -73,7 +73,7 @@ The server listens on two ports:
 
 ### Pre-built binaries
 
-Download the latest release from the [releases page](../../releases).
+Download the latest release from the [releases page](https://github.com/giantswarm/mcp-prometheus/releases).
 
 ### From source
 
@@ -320,7 +320,16 @@ provider, list the platform's Google OAuth client ID (the one muster logs users 
 
 When OAuth is enabled, every tool call is scoped to the authenticated user's allowed Mimir tenant IDs.
 The user can pass an explicit `org_id` parameter; the server validates it against their allowed tenants.
-If no `org_id` is given, all allowed tenants are injected as a Mimir pipe-separated multi-tenant selector.
+If no `org_id` is given, the query tools inject all allowed tenants as a Mimir pipe-separated
+multi-tenant selector, which the querier federates.
+
+Mimir's ruler and Alertmanager serve one tenant per request, so `get_alerts`, `get_rules` and
+`get_alertmanager_alerts` address only the tenants of type `alerting` (a tenant of type `data` only
+has neither rules nor an Alertmanager and never joins). `get_alertmanager_alerts` reads every alerting
+tenant and merges the alerts, each marked with its `tenant`; `org_id`, pipe-separated for several,
+narrows the read. `get_alerts` and `get_rules` read a single alerting tenant by itself and, with
+several, answer an error naming them until `org_id` picks one. In static mode every configured tenant
+counts as alerting.
 
 Three resolution modes are available, selected with `--tenancy-mode` (or `app.tenancy.mode` in Helm):
 `grafana-organization` (default), `static`, and `none`.
@@ -330,25 +339,28 @@ Three resolution modes are available, selected with `--tenancy-mode` (or `app.te
 **`--tenancy-mode grafana-organization`**
 
 Reads `GrafanaOrganization` custom resources from the Kubernetes API.
-Each CR declares which Dex groups have access (`spec.rbac`) and which Mimir tenant IDs map to it (`spec.tenants`).
+Each CR declares which Dex groups have access (`spec.rbac`) and which Mimir tenants map to it
+(`spec.tenants`), each with the `types` it carries: `data` (the default) and `alerting`.
 
 ```yaml
-apiVersion: observability.giantswarm.io/v1alpha1
+apiVersion: observability.giantswarm.io/v1alpha2
 kind: GrafanaOrganization
 metadata:
   name: team-platform
 spec:
   rbac:
-    - groupName: github-org:team-platform   # Dex group from LDAP/GitHub
+    admins:
+      - github-org:team-platform   # Dex group from LDAP/GitHub
   tenants:
-    - prod-eu-west
-    - prod-us-east
+    - name: prod_eu_west
+      types: [data, alerting]
+    - name: prod_us_east           # data only
 ```
 
 When a user authenticates:
 1. The server reads the `groups` claim from their Dex token
 2. It looks up all `GrafanaOrganization` CRs where any group in `spec.rbac` matches
-3. It collects all tenant IDs from `spec.tenants` across matching CRs
+3. It collects all tenants from `spec.tenants` across matching CRs, with their `types`
 4. Results are cached per group-set for 60 seconds
 
 The Helm chart creates a `ClusterRole` + `ClusterRoleBinding` granting `get, list, watch` on `grafanaorganizations.observability.giantswarm.io` when this mode is active.
@@ -467,14 +479,18 @@ Query tools accept: `timeout`, `limit`, `stats`, `lookback_delta`, `unlimited`.
 `get_rules` accepts the filters of `GET /api/v1/rules`, applied server-side by Prometheus or the
 Mimir ruler: `type` (`alert` or `record`), `rule_name`, `rule_group`, `file` (the Mimir rule
 namespace) and `exclude_alerts`. Label matchers (`match[]`) are not exposed because the Mimir
-ruler ignores them. On Mimir pass `org_id` — the ruler API rejects requests without a tenant.
+ruler ignores them. On Mimir the ruler API serves one tenant per request: under OAuth the caller's
+alerting tenant is read by itself and, with several, `org_id` names one (see Multi-tenancy);
+without OAuth pass `org_id` when no default tenant is configured. The same holds for `get_alerts`.
 
 `get_alertmanager_alerts` reads `GET /api/v2/alerts` of the Alertmanager at `alertmanager_url` or
 `ALERTMANAGER_URL` and returns the alerts that notify, oldest first, each with its fingerprint,
 alertname, severity, start time, labels, annotations and receivers. `filter` takes label matchers
 (`team="bumblebee"`, `severity=~"page|notify"`) and `receiver` a receiver regex; both are applied
-by the Alertmanager. The tenant is resolved like for every Prometheus tool, so on Mimir the
-multi-tenant Alertmanager is read with the caller's `X-Scope-OrgID`.
+by the Alertmanager. On Mimir the Alertmanager serves one tenant per request: under OAuth every
+alerting tenant of the caller is read and the alerts merged, each with its `tenant`, the result
+listing the `tenants` read; `org_id`, pipe-separated for several, narrows the read. Without OAuth
+pass `org_id` when no default tenant is configured.
 
 ### Advanced
 

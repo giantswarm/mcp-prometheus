@@ -76,3 +76,10 @@ func (r *StaticResolver) TenantsForGroups(_ context.Context, groups []string) ([
 	sort.Strings(result)
 	return result, nil
 }
+
+// AlertingTenantsForGroups implements [server.TenancyResolver]. A static
+// configuration carries no tenant types, so every configured tenant counts as
+// alerting: the result is that of [StaticResolver.TenantsForGroups].
+func (r *StaticResolver) AlertingTenantsForGroups(ctx context.Context, groups []string) ([]string, error) {
+	return r.TenantsForGroups(ctx, groups)
+}

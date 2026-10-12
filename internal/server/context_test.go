@@ -16,6 +16,10 @@ func (s *stubResolver) TenantsForGroups(_ context.Context, _ []string) ([]string
 	return []string{tenantA}, nil
 }
 
+func (s *stubResolver) AlertingTenantsForGroups(ctx context.Context, groups []string) ([]string, error) {
+	return s.TenantsForGroups(ctx, groups)
+}
+
 func TestWithOAuthEnabled(t *testing.T) {
 	sc, err := NewServerContext(context.Background(), WithOAuthEnabled(true))
 	if err != nil {

@@ -84,9 +84,22 @@ const (
 	// toolExecuteRangeQuery is the registered name of the PromQL range-query tool.
 	toolExecuteRangeQuery = "execute_range_query"
 
+	// toolGetAlerts and toolGetRules are the registered names of the ruler
+	// tools, which address one tenant per request (see tenantScopeOf).
+	toolGetAlerts = "get_alerts"
+	toolGetRules  = "get_rules"
+
+	// rulerTenantAdvice ends the ruler tools' descriptions: how their tenant
+	// is chosen on Mimir, whose ruler API serves one tenant per request.
+	rulerTenantAdvice = " On Mimir the ruler API serves one tenant per request: under OAuth the caller's alerting tenant is read by itself " +
+		"and, with several alerting tenants, org_id names the one to read; without OAuth pass org_id when no default tenant is configured."
+
 	// errQueryParameterRequired is returned when a query handler is called without
 	// the required "query" argument.
 	errQueryParameterRequired = "Error: query parameter is required and must be a string"
+
+	// paramOrgID is the tenant parameter (X-Scope-OrgID) of every tool.
+	paramOrgID = "org_id"
 
 	// get_rules filter parameters (see RulesOptions for the wire mapping).
 	paramRuleType      = "type"
@@ -102,7 +115,7 @@ func withPrometheusConnectionParams(options ...mcp.ToolOption) []mcp.ToolOption 
 		mcp.WithString("prometheus_url",
 			mcp.Description("Prometheus server URL (e.g., 'http://localhost:8080/prometheus')"),
 		),
-		mcp.WithString("org_id",
+		mcp.WithString(paramOrgID,
 			mcp.Description("Organization ID for multi-tenant Prometheus"),
 		),
 	}
@@ -172,6 +185,29 @@ func allowsUnlimited(name string) bool {
 	return false
 }
 
+// tenantScope names the tenants a tool may address under OAuth tenancy.
+type tenantScope int
+
+const (
+	// scopeData addresses every tenant of the caller; Mimir's querier
+	// federates them in one request ("a|b").
+	scopeData tenantScope = iota
+	// scopeAlerting addresses the caller's tenants of type alerting; Mimir's
+	// ruler and Alertmanager serve one tenant per request.
+	scopeAlerting
+)
+
+// tenantScopeOf is the scope of the named tool. The set is closed and static
+// like allowsUnlimited's: the ruler tools address alerting tenants, every
+// other Prometheus tool the querier's.
+func tenantScopeOf(name string) tenantScope {
+	switch name {
+	case toolGetAlerts, toolGetRules:
+		return scopeAlerting
+	}
+	return scopeData
+}
+
 // truncationMiddleware caps oversized TextContent in tool results at
 // MaxResultLength and appends the given advice. It is wired by
 // registerPrometheusTools for every tool whose advice argument is non-empty.
@@ -220,13 +256,14 @@ func isUnlimitedRequest(req mcp.CallToolRequest) bool {
 // Handler wrapper type for cleaner function signatures
 type PrometheusHandler func(ctx context.Context, request mcp.CallToolRequest, client *Client, sc *server.ServerContext) (*mcp.CallToolResult, error)
 
-// Wrapper that handles dynamic client creation and error handling
-func withDynamicPrometheusClient(handler PrometheusHandler, client *Client, sc *server.ServerContext) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// Wrapper that handles dynamic client creation and error handling; scope
+// names the tenants the tool may address.
+func withDynamicPrometheusClient(handler PrometheusHandler, client *Client, sc *server.ServerContext, scope tenantScope) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := extractParams(request)
 
 		// Create client with dynamic parameters if provided
-		dynamicClient, err := createClientFromParams(ctx, params, client, sc)
+		dynamicClient, err := createClientFromParams(ctx, params, client, sc, scope)
 		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
@@ -253,7 +290,7 @@ func withDynamicPrometheusClient(handler PrometheusHandler, client *Client, sc *
 // meaningful when readOnlyHint is false.
 func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.ServerContext, middleware []ToolMiddleware, toolName string, description string, advice string, handler PrometheusHandler, options ...mcp.ToolOption) {
 	registerTool(s, middleware, toolName, description, advice,
-		withDynamicPrometheusClient(handler, client, sc), withPrometheusConnectionParams(options...)...)
+		withDynamicPrometheusClient(handler, client, sc, tenantScopeOf(toolName)), withPrometheusConnectionParams(options...)...)
 }
 
 // registerTool registers one read-only tool with the truncation middleware
@@ -346,29 +383,34 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 	registerPrometheusTools(s, client, sc, middleware, "get_config", "Get Prometheus configuration", bulkAdvice, handleGetConfig)
 
 	// Alerting tools
-	registerPrometheusTools(s, client, sc, middleware, "get_alerts", "Get active alerts", alertsAdvice, handleGetAlerts)
+	registerPrometheusTools(s, client, sc, middleware, toolGetAlerts,
+		"Get active alerts from the ruler (GET /api/v1/alerts)."+rulerTenantAdvice,
+		alertsAdvice, handleGetAlerts)
 
 	registerPrometheusTools(s, client, sc, middleware, "get_alertmanagers", "Get AlertManager discovery information", noTruncation, handleGetAlertManagers)
 
 	registerTool(s, middleware, toolGetAlertmanagerAlerts,
 		"Get the alerts that notify from Alertmanager: active, neither silenced nor inhibited, oldest first, "+
 			"with fingerprint, alertname, severity, start time, labels, annotations and receivers. "+
-			"Filters are applied by the Alertmanager. On Mimir pass org_id when no default tenant is configured.",
+			"Filters are applied by the Alertmanager. On Mimir the Alertmanager serves one tenant per request: "+
+			"under OAuth the caller's alerting tenants are read, every one when there are several and the alerts merged, each marked with its tenant; "+
+			"org_id, pipe-separated for several, narrows the read. Without OAuth pass org_id when no default tenant is configured.",
 		alertmanagerAdvice,
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleGetAlertmanagerAlerts(ctx, req, sc)
 		},
 		mcp.WithString(paramAlertmanagerURL,
 			mcp.Description("Alertmanager base URL (e.g. 'http://mimir-gateway.mimir/alertmanager' or 'http://alertmanager:9093'); defaults to ALERTMANAGER_URL")),
-		mcp.WithString("org_id", mcp.Description("Organization ID (X-Scope-OrgID) for the multi-tenant Mimir Alertmanager")),
+		mcp.WithString(paramOrgID,
+			mcp.Description("Tenant (X-Scope-OrgID) of the Mimir Alertmanager to read, pipe-separated for several; under OAuth one of the caller's alerting tenants")),
 		mcp.WithString(paramReceiver, mcp.Description("Only alerts routed to a receiver matching this regex")),
 		mcp.WithArray(paramFilter, mcp.WithStringItems(),
 			mcp.Description("Only alerts matching every label matcher, e.g. ['team=\"bumblebee\"', 'severity=~\"page|notify\"']")),
 	)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_rules",
+	registerPrometheusTools(s, client, sc, middleware, toolGetRules,
 		"Get recording and alerting rules. The optional filters map onto the query parameters of GET /api/v1/rules and are applied server-side, "+
-			"so prefer them over post-processing a full dump. On Mimir the ruler API requires a tenant: pass org_id when no default is configured.",
+			"so prefer them over post-processing a full dump."+rulerTenantAdvice,
 		bulkAdvice, handleGetRules,
 		mcp.WithString(paramRuleType, mcp.Enum(RuleTypeAlert, RuleTypeRecord),
 			mcp.Description("Return only alerting rules ('alert') or recording rules ('record'); omit for both")),
@@ -500,13 +542,76 @@ func resolveTenantOrgID(ctx context.Context, sc *server.ServerContext, explicit 
 	return tenancy.SelectOrgID(tenants, explicit)
 }
 
-// createClientFromParams creates a Prometheus client from request parameters,
-// applying OAuth tenancy resolution for the X-Scope-OrgID header when enabled.
-func createClientFromParams(ctx context.Context, params map[string]any, defaultClient *Client, sc *server.ServerContext) (*Client, error) {
-	prometheusURL, hasURL := params["prometheus_url"].(string)
-	explicitOrgID, _ := params["org_id"].(string)
+// resolveAlertingOrgIDs determines the X-Scope-OrgID values for a request
+// against an API that serves one tenant per request, Mimir's Alertmanager and
+// ruler: one value per tenant to read.
+//
+// When OAuth is enabled and a tenancy resolver is available it resolves the
+// caller's tenants of type alerting and validates (or selects all of) them
+// with [tenancy.SelectOrgIDs]: a tenant that carries data only never reaches
+// these APIs. Without OAuth or a resolver, the explicit value's pipe-separated
+// parts are returned verbatim (a single "" when it is empty).
+func resolveAlertingOrgIDs(ctx context.Context, sc *server.ServerContext, explicit string) ([]string, error) {
+	if !sc.IsOAuthEnabled() || sc.TenancyResolver() == nil {
+		return splitOrgID(explicit), nil
+	}
 
-	orgID, err := resolveTenantOrgID(ctx, sc, explicitOrgID)
+	userInfo, ok := handler.UserInfoFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("tenancy: no user info in context; token validation may have been skipped")
+	}
+
+	tenants, err := sc.TenancyResolver().AlertingTenantsForGroups(ctx, userInfo.Groups)
+	if err != nil {
+		return nil, fmt.Errorf("tenancy: resolve tenants: %w", err)
+	}
+	if len(tenants) == 0 {
+		return nil, fmt.Errorf("tenancy: none of your tenants carries alerting; access denied")
+	}
+
+	return tenancy.SelectOrgIDs(tenants, explicit)
+}
+
+// resolveAlertingOrgID is resolveAlertingOrgIDs for a tool that reads one
+// tenant per call, the ruler tools: several tenants are an error that names
+// them, so the caller can pass org_id.
+func resolveAlertingOrgID(ctx context.Context, sc *server.ServerContext, explicit string) (string, error) {
+	orgIDs, err := resolveAlertingOrgIDs(ctx, sc, explicit)
+	if err != nil {
+		return "", err
+	}
+	if len(orgIDs) > 1 {
+		return "", fmt.Errorf("tenancy: this tool reads one tenant per call; pass org_id with one of your alerting tenants (%s)",
+			strings.Join(orgIDs, ", "))
+	}
+	return orgIDs[0], nil
+}
+
+// splitOrgID splits a pipe-separated org_id into its parts, trimmed; an empty
+// value is the single empty part (no tenant override).
+func splitOrgID(explicit string) []string {
+	parts := strings.Split(explicit, "|")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+// createClientFromParams creates a Prometheus client from request parameters,
+// applying OAuth tenancy resolution for the X-Scope-OrgID header when enabled:
+// the querier's federated selector for scopeData, a single alerting tenant
+// for scopeAlerting.
+func createClientFromParams(ctx context.Context, params map[string]any, defaultClient *Client, sc *server.ServerContext, scope tenantScope) (*Client, error) {
+	prometheusURL, hasURL := params["prometheus_url"].(string)
+	explicitOrgID, _ := params[paramOrgID].(string)
+
+	var orgID string
+	var err error
+	if scope == scopeAlerting {
+		orgID, err = resolveAlertingOrgID(ctx, sc, explicitOrgID)
+	} else {
+		orgID, err = resolveTenantOrgID(ctx, sc, explicitOrgID)
+	}
 	if err != nil {
 		return nil, err
 	}

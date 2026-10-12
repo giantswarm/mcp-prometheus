@@ -1090,11 +1090,25 @@ func TestGetRulesSurfacesAPIError(t *testing.T) {
 
 const testTenant = "team-a"
 
-// stubTenancyResolver returns a fixed tenant list for every group set.
-type stubTenancyResolver struct{ tenants []string }
+// stubTenancyResolver returns fixed tenant lists for every group set:
+// tenants, of which alerting carry alerting.
+type stubTenancyResolver struct{ tenants, alerting []string }
 
 func (s *stubTenancyResolver) TenantsForGroups(_ context.Context, _ []string) ([]string, error) {
 	return s.tenants, nil
+}
+
+func (s *stubTenancyResolver) AlertingTenantsForGroups(_ context.Context, _ []string) ([]string, error) {
+	return s.alerting, nil
+}
+
+// userContext carries the OAuth user info of a caller in group team-a-admins,
+// the way the OAuth middleware leaves it for the tools.
+func userContext() context.Context {
+	return handler.ContextWithUserInfo(context.Background(), &providers.UserInfo{
+		ID:     "user-1",
+		Groups: []string{"team-a-admins"},
+	})
 }
 
 func newTenancyTestContext(t *testing.T, opts ...server.ServerOption) *server.ServerContext {
@@ -1171,5 +1185,180 @@ func TestResolveTenantOrgID_ResolverInjectsTenant(t *testing.T) {
 	// An explicit org_id outside the allowed set is rejected.
 	if _, err := resolveTenantOrgID(ctx, sc, "other-tenant"); err == nil {
 		t.Error("expected error for org_id outside the allowed tenants")
+	}
+}
+
+// --- resolveAlertingOrgIDs / resolveAlertingOrgID ---
+
+const (
+	tenantDemo   = "demo"
+	tenantTraces = "traces" // data only: no rules, no Alertmanager
+)
+
+// Without a resolver (OAuth off, or tenancy mode "none") the explicit org_id
+// passes through, split on "|": the ruler reads one part, the Alertmanager
+// every one.
+func TestResolveAlertingOrgIDs_WithoutResolver(t *testing.T) {
+	for _, sc := range []*server.ServerContext{
+		newTenancyTestContext(t),
+		newTenancyTestContext(t, server.WithOAuthEnabled(true), server.WithTenancyResolver(nil)),
+	} {
+		for explicit, want := range map[string][]string{
+			"":              {""},
+			testTenant:      {testTenant},
+			"team-a | demo": {testTenant, tenantDemo},
+		} {
+			got, err := resolveAlertingOrgIDs(context.Background(), sc, explicit)
+			if err != nil {
+				t.Fatalf("explicit %q: unexpected error: %v", explicit, err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("explicit %q: got %v, want %v", explicit, got, want)
+			}
+		}
+	}
+}
+
+func TestResolveAlertingOrgIDs_RequiresUserInfo(t *testing.T) {
+	sc := newTenancyTestContext(t,
+		server.WithOAuthEnabled(true),
+		server.WithTenancyResolver(&stubTenancyResolver{tenants: []string{testTenant}, alerting: []string{testTenant}}),
+	)
+	if _, err := resolveAlertingOrgIDs(context.Background(), sc, ""); err == nil {
+		t.Fatal("expected error when no user info is in the context")
+	}
+}
+
+// One alerting tenant beside a data-only one: the Alertmanager and the ruler
+// read the alerting one by itself while the querier still federates both;
+// the data-only tenant is refused as org_id, the alerting ones named.
+func TestResolveAlertingOrgIDs_DataOnlyTenantNeverJoins(t *testing.T) {
+	sc := newTenancyTestContext(t,
+		server.WithOAuthEnabled(true),
+		server.WithTenancyResolver(&stubTenancyResolver{tenants: []string{testTenant, tenantTraces}, alerting: []string{testTenant}}),
+	)
+	ctx := userContext()
+
+	got, err := resolveAlertingOrgIDs(ctx, sc, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := []string{testTenant}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	if one, err := resolveAlertingOrgID(ctx, sc, ""); err != nil || one != testTenant {
+		t.Errorf("resolveAlertingOrgID = %q, %v; want %q", one, err, testTenant)
+	}
+	if all, err := resolveTenantOrgID(ctx, sc, ""); err != nil || all != testTenant+"|"+tenantTraces {
+		t.Errorf("resolveTenantOrgID = %q, %v; want both tenants federated", all, err)
+	}
+
+	_, err = resolveAlertingOrgIDs(ctx, sc, tenantTraces)
+	if err == nil || !strings.Contains(err.Error(), "("+testTenant+")") {
+		t.Errorf("org_id of the data-only tenant: error = %v, want a refusal naming %q", err, testTenant)
+	}
+}
+
+// Several alerting tenants: the Alertmanager reads every one, org_id narrows
+// the read, and the ruler asks for org_id, naming them.
+func TestResolveAlertingOrgIDs_SeveralAlertingTenants(t *testing.T) {
+	sc := newTenancyTestContext(t,
+		server.WithOAuthEnabled(true),
+		server.WithTenancyResolver(&stubTenancyResolver{
+			tenants:  []string{tenantDemo, testTenant, tenantTraces},
+			alerting: []string{tenantDemo, testTenant},
+		}),
+	)
+	ctx := userContext()
+
+	got, err := resolveAlertingOrgIDs(ctx, sc, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := []string{tenantDemo, testTenant}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	got, err = resolveAlertingOrgIDs(ctx, sc, testTenant)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := []string{testTenant}; !reflect.DeepEqual(got, want) {
+		t.Errorf("org_id %q: got %v, want %v", testTenant, got, want)
+	}
+
+	_, err = resolveAlertingOrgID(ctx, sc, "")
+	if err == nil || !strings.Contains(err.Error(), "pass org_id") || !strings.Contains(err.Error(), tenantDemo+", "+testTenant) {
+		t.Errorf("resolveAlertingOrgID without org_id: error = %v, want one naming the tenants", err)
+	}
+	if one, err := resolveAlertingOrgID(ctx, sc, tenantDemo); err != nil || one != tenantDemo {
+		t.Errorf("resolveAlertingOrgID(%q) = %q, %v", tenantDemo, one, err)
+	}
+}
+
+func TestResolveAlertingOrgIDs_NoAlertingTenant(t *testing.T) {
+	sc := newTenancyTestContext(t,
+		server.WithOAuthEnabled(true),
+		server.WithTenancyResolver(&stubTenancyResolver{tenants: []string{tenantTraces}}),
+	)
+	_, err := resolveAlertingOrgIDs(userContext(), sc, "")
+	if err == nil || !strings.Contains(err.Error(), "carries alerting") {
+		t.Errorf("error = %v, want a refusal for the lack of an alerting tenant", err)
+	}
+}
+
+// get_alerts reads the ruler with the caller's single alerting tenant and,
+// with several, answers an error naming them until org_id picks one.
+func TestHandleGetAlerts_AlertingTenant(t *testing.T) {
+	var gotOrgID string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotOrgID = r.Header.Get("X-Scope-OrgID")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"alerts":[]}}`))
+	}))
+	defer srv.Close()
+
+	tests := []struct {
+		name      string
+		alerting  []string
+		args      map[string]any
+		wantOrgID string
+		wantError string
+	}{
+		{name: "one alerting tenant is read by itself", alerting: []string{testTenant}, wantOrgID: testTenant},
+		{name: "several alerting tenants ask for org_id, named", alerting: []string{tenantDemo, testTenant}, wantError: tenantDemo + ", " + testTenant},
+		{name: "org_id picks one of several", alerting: []string{tenantDemo, testTenant}, args: map[string]any{paramOrgID: tenantDemo}, wantOrgID: tenantDemo},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotOrgID = ""
+			sc := newTenancyTestContext(t,
+				server.WithPrometheusConfig(server.PrometheusConfig{URL: srv.URL}),
+				server.WithOAuthEnabled(true),
+				server.WithTenancyResolver(&stubTenancyResolver{tenants: append([]string{tenantTraces}, tt.alerting...), alerting: tt.alerting}),
+			)
+			s := mcpserver.NewMCPServer("test", "1.0.0", mcpserver.WithToolCapabilities(true))
+			if err := RegisterPrometheusTools(s, sc); err != nil {
+				t.Fatalf("RegisterPrometheusTools: %v", err)
+			}
+			args := tt.args
+			if args == nil {
+				args = map[string]any{}
+			}
+
+			res := callToolWithContext(userContext(), t, s, toolGetAlerts, args)
+			text := res.Content[0].(mcp.TextContent).Text
+			if tt.wantError != "" {
+				if !res.IsError || !strings.Contains(text, tt.wantError) {
+					t.Errorf("result = %q (isError %v), want an error containing %q", text, res.IsError, tt.wantError)
+				}
+				return
+			}
+			if res.IsError {
+				t.Fatalf("unexpected error: %s", text)
+			}
+			if gotOrgID != tt.wantOrgID {
+				t.Errorf("X-Scope-OrgID = %q, want %q", gotOrgID, tt.wantOrgID)
+			}
+		})
 	}
 }
