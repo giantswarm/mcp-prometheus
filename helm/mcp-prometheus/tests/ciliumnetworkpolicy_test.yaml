@@ -205,3 +205,49 @@ tests:
           path: metadata.annotations
           value:
             example.com/owner: bumblebee
+
+  # The callers the README lists, each admitted on its port by default (the
+  # gateway's proxies with the HTTPRoute), and a stranger on neither port.
+  - it: admits every documented caller and no stranger
+    set:
+      gatewayAPI.enabled: true
+      gatewayAPI.httpRoute.parentRefs:
+        - name: giantswarm-default
+          namespace: envoy-gateway-system
+    asserts:
+      - contains:
+          path: spec.ingress[0].fromEndpoints
+          content:
+            matchLabels:
+              app.kubernetes.io/name: muster
+              io.kubernetes.pod.namespace: agent-platform
+      - contains:
+          path: spec.ingress[0].fromEndpoints
+          content:
+            matchLabels:
+              app: teleport-kube-agent
+              io.kubernetes.pod.namespace: kube-system
+      - contains:
+          path: spec.ingress[0].fromEndpoints
+          content:
+            matchLabels:
+              app.kubernetes.io/name: envoy
+              io.kubernetes.pod.namespace: envoy-gateway-system
+      - contains:
+          path: spec.ingress[1].fromEndpoints
+          content:
+            matchLabels:
+              app.kubernetes.io/instance: alloy-metrics
+              io.kubernetes.pod.namespace: kube-system
+      - notContains:
+          path: spec.ingress[0].fromEndpoints
+          content:
+            matchLabels:
+              app.kubernetes.io/name: stranger
+              io.kubernetes.pod.namespace: default
+      - notContains:
+          path: spec.ingress[1].fromEndpoints
+          content:
+            matchLabels:
+              app.kubernetes.io/name: stranger
+              io.kubernetes.pod.namespace: default
