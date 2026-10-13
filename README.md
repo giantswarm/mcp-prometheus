@@ -505,6 +505,24 @@ Large query results are automatically truncated with guidance for the AI to refi
 
 ## Kubernetes deployment (Helm)
 
+### Ingress callers
+
+The chart's CiliumNetworkPolicy admits only these callers; a direct call from any other pod is dropped, so it cannot skip muster's sign-in, audit trail and per-user authorization. Dropping one cuts that path off, so each has a render test (`helm/mcp-prometheus/tests/ciliumnetworkpolicy_test.yaml`).
+
+| Caller | Port | Admitted by | Why |
+|---|---|---|---|
+| muster (`agent-platform`) | server | `ciliumNetworkPolicy.ingress.muster` | The client of this server: it signs users in and forwards their calls. |
+| teleport-kube-agent (`kube-system`) | server | `ciliumNetworkPolicy.ingress.teleportPeers` | A muster on another cluster reaches this server through Teleport application access, and its calls arrive from the agent. |
+| the Gateway's proxies (`envoy-gateway-system`) | server | `ciliumNetworkPolicy.ingress.gatewayPeers`, while `gatewayAPI.enabled` | They carry the HTTPRoute's traffic to the server. |
+| alloy-metrics (`kube-system`) | metrics | `ciliumNetworkPolicy.ingress.metricsScrapers`, while `monitoring.enabled` | It scrapes the metrics endpoint. |
+| the kubelet (host entity) | all | always | Liveness and readiness probes. |
+
+Further clients on the server port go into `ciliumNetworkPolicy.ingress.additionalPeers`.
+
+### Releases
+
+Every releasable merge to `main` cuts a release candidate (`vX.Y.Z-rc.N`, a pre-release); a candidate is proven on a test installation, and the stable `vX.Y.Z` is cut by running the Auto Release workflow with `release-type: stable`, which promotes the latest candidate.
+
 ### Minimal (no OAuth)
 
 ```yaml
