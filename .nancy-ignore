@@ -1,6 +1,3 @@
-# github.com/syndtr/goleveldb (graph-only: rekor's server dependencies via sigstore-go; not compiled into mcp-prometheus).
-# NULL pointer dereference in the leveldb test/benchmark path; the project has published no fixed release since v1.0.0.
-CVE-2021-43668
-# CVE-2026-108859: mcp-go through v1.2.1 (the latest) reads a Streamable HTTP POST body whole; no fixed release exists yet.
-# Tracked in https://github.com/giantswarm/mcp-prometheus/issues/344; remove by 2026-11-12.
 CVE-2026-108859 until=2026-11-12 # github.com/mark3labs/mcp-go@v1.2.1
+CVE-2026-109425 until=2026-11-13 # github.com/tink-crypto/tink-go/v2@v2.7.0
+CVE-2021-43668 until=2026-11-13 # github.com/syndtr/goleveldb@v1.0.1-0.20220721030215-126854af5e6d
