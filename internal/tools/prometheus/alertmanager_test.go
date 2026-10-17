@@ -3,6 +3,7 @@ package prometheus
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -388,5 +390,116 @@ func TestHandleGetAlertmanagerAlertsTenants(t *testing.T) {
 				t.Errorf("alerts = %v (count %d), want %v", fingerprints, got.Count, tt.wantAlerts)
 			}
 		})
+	}
+}
+
+// manyAlertsBody is a GET /api/v2/alerts answer of n alerts with a 1 KB
+// annotation each, n KB in all.
+func manyAlertsBody(n int) string {
+	alerts := make([]map[string]any, n)
+	for i := range alerts {
+		alerts[i] = map[string]any{
+			"fingerprint": fmt.Sprintf("f%04d", i),
+			"startsAt":    time.Date(2026, 9, 29, 0, 0, i, 0, time.UTC).Format(time.RFC3339),
+			"labels":      map[string]string{"alertname": "ManyAlerts", "severity": "notify", "team": "bumblebee"},
+			"annotations": map[string]string{"description": strings.Repeat("x", 1000)},
+			"receivers": []struct {
+				Name string `json:"name"`
+			}{{"team_slack"}},
+		}
+	}
+	b, _ := json.Marshal(alerts)
+	return string(b)
+}
+
+func TestHandleGetAlertmanagerAlertsTruncatesOnAlertBoundaries(t *testing.T) {
+	const total = 200 // ~240 KB, well over MaxResultLength
+	body := manyAlertsBody(total)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+
+	sc, err := server.NewServerContext(context.Background(),
+		server.WithPrometheusConfig(server.PrometheusConfig{URL: testPrometheusURL, AlertmanagerURL: srv.URL}),
+		server.WithSlogLogger(discardLogger()))
+	if err != nil {
+		t.Fatalf("NewServerContext: %v", err)
+	}
+	defer func() { _ = sc.Shutdown() }()
+	s := mcpserver.NewMCPServer("test", "1.0.0", mcpserver.WithToolCapabilities(true))
+	if err := RegisterPrometheusTools(s, sc); err != nil {
+		t.Fatalf("RegisterPrometheusTools: %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		args       map[string]any
+		wantCount  int // 0: as many as fit
+		wantReason string
+	}{
+		{name: "over the size limit", args: map[string]any{}, wantReason: "answer over"},
+		{name: "limit", args: map[string]any{paramAlertsLimit: 3}, wantCount: 3, wantReason: "limit 3"},
+		{name: "limit over the size limit", args: map[string]any{paramAlertsLimit: 150}, wantReason: "answer over"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := callTool(t, s, toolGetAlertmanagerAlerts, tt.args)
+			text := res.Content[0].(mcp.TextContent).Text
+			if res.IsError {
+				t.Fatalf("unexpected error: %s", text)
+			}
+			if len(text) > MaxResultLength {
+				t.Errorf("answer is %d characters, over %d", len(text), MaxResultLength)
+			}
+			var got struct {
+				Count     int                 `json:"count"`
+				Alerts    []AlertmanagerAlert `json:"alerts"`
+				Truncated *alertsTruncation   `json:"truncated"`
+			}
+			if err := json.Unmarshal([]byte(text), &got); err != nil {
+				t.Fatalf("answer is not valid JSON: %v", err)
+			}
+			if got.Count != len(got.Alerts) || got.Count == 0 {
+				t.Fatalf("count = %d with %d alerts, want equal and non-zero", got.Count, len(got.Alerts))
+			}
+			if tt.wantCount != 0 && got.Count != tt.wantCount {
+				t.Errorf("count = %d, want %d", got.Count, tt.wantCount)
+			}
+			for i, a := range got.Alerts {
+				if want := fmt.Sprintf("f%04d", i); a.Fingerprint != want || len(a.Annotations["description"]) != 1000 {
+					t.Fatalf("alert %d = %s, want the complete alert %s, oldest first", i, a.Fingerprint, want)
+				}
+			}
+			tr := got.Truncated
+			if tr == nil {
+				t.Fatal("no truncated marker")
+			}
+			if tr.Total != total || tr.Omitted != total-got.Count || !strings.Contains(tr.Reason, tt.wantReason) ||
+				!strings.Contains(tr.Narrow, `"filter"`) {
+				t.Errorf("truncated = %+v, want total %d, omitted %d, reason %q and the narrowing filters", tr, total, total-got.Count, tt.wantReason)
+			}
+		})
+	}
+}
+
+func TestEncodeAlertmanagerAnswerFitsWithoutTruncation(t *testing.T) {
+	alerts := []AlertmanagerAlert{{Fingerprint: "a1"}, {Fingerprint: "b2"}}
+	out, err := encodeAlertmanagerAnswer(alerts, nil, 0, MaxResultLength)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "truncated") {
+		t.Errorf("answer = %s, want no truncated marker", out)
+	}
+	// Not even one alert fits: the answer is the empty list and the marker.
+	out, err = encodeAlertmanagerAnswer(alerts, nil, 0, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got alertmanagerAnswer
+	if err := json.Unmarshal(out, &got); err != nil || got.Count != 0 || got.Truncated == nil || got.Truncated.Omitted != 2 {
+		t.Errorf("answer = %s (%v), want no alerts and 2 omitted", out, err)
 	}
 }

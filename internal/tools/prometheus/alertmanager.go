@@ -28,19 +28,15 @@ const (
 	paramAlertmanagerURL = "alertmanager_url"
 	paramReceiver        = "receiver"
 	paramFilter          = "filter"
+	paramAlertsLimit     = "limit"
 )
 
-// alertmanagerAdvice is appended when get_alertmanager_alerts output is
-// truncated. The Alertmanager API filters server-side, so the advice points
-// the caller at the tool's own filters.
-const alertmanagerAdvice = `
-
-⚠️  RESULT TRUNCATED: The response exceeded 50k characters.
-
-💡 To narrow the result, filter on the Alertmanager side:
-   • "filter" with label matchers, e.g. ["team=\"bumblebee\"", "severity=\"page\""]
-   • "receiver" with a receiver name or regex, e.g. "pager"
-   • "org_id" with one tenant when several were read`
+// alertmanagerNarrowing names the filters that narrow a truncated
+// get_alertmanager_alerts answer. The Alertmanager filters server-side; the
+// answer already holds only the alerts that notify.
+const alertmanagerNarrowing = `Alerts are oldest first; the newest were left out. Narrow with "filter" label matchers ` +
+	`(e.g. ["team=\"bumblebee\"", "severity=\"page\""]), "receiver" (a receiver regex), "org_id" (one tenant) ` +
+	`or "limit". Only active alerts that are neither silenced nor inhibited are listed.`
 
 // AlertmanagerAlertsOptions narrows a GetAlertmanagerAlerts call. Both fields
 // map onto query parameters of GET /api/v2/alerts and are applied by the
@@ -262,11 +258,11 @@ func handleGetAlertmanagerAlerts(ctx context.Context, request mcp.CallToolReques
 		return errorResult(fmt.Sprintf("Error getting Alertmanager alerts: %v", err)), nil
 	}
 
-	out, err := json.Marshal(struct {
-		Count   int                 `json:"count"`
-		Tenants []string            `json:"tenants,omitempty"`
-		Alerts  []AlertmanagerAlert `json:"alerts"`
-	}{len(alerts), slices.DeleteFunc(tenants, func(t string) bool { return t == "" }), alerts})
+	limit, err := getAlertsLimit(params)
+	if err != nil {
+		return errorResult(err.Error()), nil
+	}
+	out, err := encodeAlertmanagerAnswer(alerts, slices.DeleteFunc(tenants, func(t string) bool { return t == "" }), limit, MaxResultLength)
 	if err != nil {
 		return errorResult(fmt.Sprintf("Error encoding Alertmanager alerts: %v", err)), nil
 	}
@@ -274,6 +270,90 @@ func handleGetAlertmanagerAlerts(ctx context.Context, request mcp.CallToolReques
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{mcp.TextContent{Type: contentTypeText, Text: string(out)}},
 	}, nil
+}
+
+// alertmanagerAnswer is the get_alertmanager_alerts result: Count is the
+// number of alerts in Alerts, Truncated is set when alerts were left out.
+type alertmanagerAnswer struct {
+	Count     int               `json:"count"`
+	Tenants   []string          `json:"tenants,omitempty"`
+	Alerts    []json.RawMessage `json:"alerts"`
+	Truncated *alertsTruncation `json:"truncated,omitempty"`
+}
+
+// alertsTruncation tells the caller how many alerts an answer left out, why,
+// and how to narrow the read.
+type alertsTruncation struct {
+	Total   int    `json:"total"`
+	Omitted int    `json:"omitted"`
+	Reason  string `json:"reason"`
+	Narrow  string `json:"narrow"`
+}
+
+// encodeAlertmanagerAnswer encodes as many complete alerts as limit (0 for
+// none) and maxLen bytes allow, in order, so the answer stays valid JSON
+// whatever its size; a cut answer carries a truncated marker.
+func encodeAlertmanagerAnswer(alerts []AlertmanagerAlert, tenants []string, limit, maxLen int) ([]byte, error) {
+	raw := make([]json.RawMessage, len(alerts))
+	for i, a := range alerts {
+		b, err := json.Marshal(a)
+		if err != nil {
+			return nil, err
+		}
+		raw[i] = b
+	}
+
+	encode := func(kept int, reason string) ([]byte, error) {
+		answer := alertmanagerAnswer{Count: kept, Tenants: tenants, Alerts: raw[:kept]}
+		if kept < len(raw) {
+			answer.Truncated = &alertsTruncation{Total: len(raw), Omitted: len(raw) - kept, Reason: reason, Narrow: alertmanagerNarrowing}
+		}
+		return json.Marshal(answer)
+	}
+
+	kept, reason := len(raw), ""
+	if limit > 0 && limit < kept {
+		kept, reason = limit, fmt.Sprintf("limit %d", limit)
+	}
+	out, err := encode(kept, reason)
+	if err != nil || len(out) <= maxLen {
+		return out, err
+	}
+
+	// The answer grows with every alert kept: the largest prefix that fits is
+	// found by bisection, each candidate encoded and measured. Zero alerts
+	// always fit.
+	reason = fmt.Sprintf("answer over %d characters", maxLen)
+	fits := 0
+	for lo, hi := 1, kept-1; lo <= hi; {
+		mid := lo + (hi-lo)/2
+		b, err := encode(mid, reason)
+		if err != nil {
+			return nil, err
+		}
+		if len(b) <= maxLen {
+			fits, out, lo = mid, b, mid+1
+		} else {
+			hi = mid - 1
+		}
+	}
+	if fits == 0 {
+		return encode(0, reason)
+	}
+	return out, nil
+}
+
+// getAlertsLimit returns the limit parameter, 0 when absent.
+func getAlertsLimit(params map[string]any) (int, error) {
+	v, ok := params[paramAlertsLimit]
+	if !ok || v == nil {
+		return 0, nil
+	}
+	n, ok := v.(float64)
+	if !ok || n < 1 || n != float64(int(n)) {
+		return 0, fmt.Errorf("%s must be a positive integer", paramAlertsLimit)
+	}
+	return int(n), nil
 }
 
 // errorResult is a tool result that reports an error to the caller.

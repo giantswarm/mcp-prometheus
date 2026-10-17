@@ -222,7 +222,7 @@ Returns labels, not samples: for values use execute_query.
 ```text
 List the alerts that notify from Alertmanager: active, not silenced or inhibited, with labels and receivers.
 
-For firing and pending alerts at the ruler use get_alerts. On Mimir every alerting tenant of the caller is read and merged; org_id, pipe-separated for several, narrows the read.
+For firing and pending alerts at the ruler use get_alerts. On Mimir every alerting tenant of the caller is read and merged; org_id, pipe-separated for several, narrows the read. An answer over 50k characters keeps the oldest complete alerts and a truncated marker with the omitted count.
 ```
 
 ```json
@@ -239,6 +239,11 @@ For firing and pending alerts at the ruler use get_alerts. On Mimir every alerti
         "type": "string"
       },
       "type": "array"
+    },
+    "limit": {
+      "description": "Maximum alerts returned, oldest first",
+      "minimum": 1,
+      "type": "number"
     },
     "org_id": {
       "description": "Tenant (X-Scope-OrgID) of the Mimir Alertmanager to read, pipe-separated for several; under OAuth one of the caller's alerting tenants",

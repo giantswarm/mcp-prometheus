@@ -409,8 +409,9 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 	registerTool(s, middleware, toolGetAlertmanagerAlerts,
 		tooldesc.Describe("List the alerts that notify from Alertmanager: active, not silenced or inhibited, with labels and receivers.",
 			"For firing and pending alerts at the ruler use get_alerts. On Mimir every alerting tenant of the caller is read and merged; "+
-				"org_id, pipe-separated for several, narrows the read."),
-		alertmanagerAdvice,
+				"org_id, pipe-separated for several, narrows the read. An answer over 50k characters keeps the oldest complete alerts "+
+				"and a truncated marker with the omitted count."),
+		noTruncation,
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleGetAlertmanagerAlerts(ctx, req, sc)
 		},
@@ -421,6 +422,8 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 		mcp.WithString(paramReceiver, mcp.Description("Only alerts routed to a receiver matching this regex")),
 		mcp.WithArray(paramFilter, mcp.WithStringItems(),
 			mcp.Description("Only alerts matching every label matcher, e.g. ['team=\"bumblebee\"', 'severity=~\"page|notify\"']")),
+		mcp.WithNumber(paramAlertsLimit, mcp.Min(1),
+			mcp.Description("Maximum alerts returned, oldest first")),
 	)
 
 	registerPrometheusTools(s, client, sc, middleware, toolGetRules,
