@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+* Tool descriptions lead with a summary line of at most 120 runes, built with `tooldesc.Describe` from mcp-toolkit, followed by a short details line naming the sibling tool to use instead, so muster's discovery shows the whole summary. Parameter descriptions are shorter. A test holds every tool to `tooldesc.DefaultBudget` and keeps the generated `docs/tools.md` current. Every tool reports `destructiveHint: false` and `idempotentHint: true` next to `readOnlyHint: true`, so it is no longer reported destructive.
 * Ignore CVE-2026-108859 (mcp-go through v1.2.1, no fixed release yet) in `.nancy-ignore` until 2026-11-12, tracked in [#344](https://github.com/giantswarm/mcp-prometheus/issues/344).
 * The chart's CiliumNetworkPolicy admits ingress from muster's namespace only (`ciliumNetworkPolicy.ingress.muster`, default `agent-platform`), no longer from the whole cluster: the server port is open to muster, to the Gateway's proxies while `gatewayAPI.enabled` (`ciliumNetworkPolicy.ingress.gatewayPeers`, default Envoy Gateway in `envoy-gateway-system`) and to `ciliumNetworkPolicy.ingress.additionalPeers`; the metrics port to `ciliumNetworkPolicy.ingress.metricsScrapers` (default alloy-metrics in `kube-system`); every port to the kubelet's probes (the host entity). `ciliumNetworkPolicy.labels` and `annotations` accept any key.
 * Use the canonical `io.giantswarm.application.team` annotation key for team ownership (value `atlas` unchanged).

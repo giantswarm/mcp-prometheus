@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/giantswarm/mcp-oauth/handler"
+	"github.com/giantswarm/mcp-toolkit/tooldesc"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
@@ -89,10 +90,10 @@ const (
 	toolGetAlerts = "get_alerts"
 	toolGetRules  = "get_rules"
 
-	// rulerTenantAdvice ends the ruler tools' descriptions: how their tenant
-	// is chosen on Mimir, whose ruler API serves one tenant per request.
-	rulerTenantAdvice = " On Mimir the ruler API serves one tenant per request: under OAuth the caller's alerting tenant is read by itself " +
-		"and, with several alerting tenants, org_id names the one to read; without OAuth pass org_id when no default tenant is configured."
+	// rulerTenantDetails ends the ruler tools' description details: Mimir's
+	// ruler API serves one tenant per request, and the refusal names the
+	// caller's tenants when org_id is missing.
+	rulerTenantDetails = "On Mimir it reads one tenant per call, chosen with org_id."
 
 	// errQueryParameterRequired is returned when a query handler is called without
 	// the required "query" argument.
@@ -113,10 +114,10 @@ const (
 func withPrometheusConnectionParams(options ...mcp.ToolOption) []mcp.ToolOption {
 	connectionParams := []mcp.ToolOption{
 		mcp.WithString("prometheus_url",
-			mcp.Description("Prometheus server URL (e.g., 'http://localhost:8080/prometheus')"),
+			mcp.Description("Prometheus or Mimir URL, if not the configured one"),
 		),
 		mcp.WithString(paramOrgID,
-			mcp.Description("Organization ID for multi-tenant Prometheus"),
+			mcp.Description("Tenant (X-Scope-OrgID)"),
 		),
 	}
 	return append(connectionParams, options...)
@@ -128,7 +129,7 @@ func withQueryEnhancementParams(options ...mcp.ToolOption) []mcp.ToolOption {
 			mcp.Description("Query timeout (e.g., '30s', '1m', '5m')"),
 		),
 		mcp.WithString("limit",
-			mcp.Description("Maximum number of returned entries"),
+			mcp.Description("Maximum entries returned"),
 		),
 		mcp.WithString("stats",
 			mcp.Description("Include query statistics: 'all'"),
@@ -137,7 +138,7 @@ func withQueryEnhancementParams(options ...mcp.ToolOption) []mcp.ToolOption {
 			mcp.Description("Query lookback delta (e.g., '5m')"),
 		),
 		mcp.WithString("unlimited",
-			mcp.Description("Set to 'true' to get unlimited output (WARNING: may be very large and impact performance)"),
+			mcp.Description("'true' lifts the 50k-character output cap: the result may be huge"),
 		),
 	}
 	return append(enhancementParams, options...)
@@ -146,10 +147,10 @@ func withQueryEnhancementParams(options ...mcp.ToolOption) []mcp.ToolOption {
 func withTimeFilteringParams(options ...mcp.ToolOption) []mcp.ToolOption {
 	timeParams := []mcp.ToolOption{
 		mcp.WithString("start_time",
-			mcp.Description("Start time for filtering (RFC3339)"),
+			mcp.Description("Start time (RFC3339)"),
 		),
 		mcp.WithString("end_time",
-			mcp.Description("End time for filtering (RFC3339)"),
+			mcp.Description("End time (RFC3339)"),
 		),
 	}
 	return append(timeParams, options...)
@@ -158,7 +159,7 @@ func withTimeFilteringParams(options ...mcp.ToolOption) []mcp.ToolOption {
 func withLabelMatchingParams(options ...mcp.ToolOption) []mcp.ToolOption {
 	matchParams := []mcp.ToolOption{
 		mcp.WithArray("matches",
-			mcp.Description("Array of label matchers to filter series"),
+			mcp.Description("Series selectors to filter by"),
 		),
 	}
 	return append(matchParams, options...)
@@ -282,23 +283,26 @@ func withDynamicPrometheusClient(handler PrometheusHandler, client *Client, sc *
 }
 
 // Helper function to create and register a tool with common patterns.
-//
-// All Prometheus tools in this server are read-only (they query Prometheus/Mimir
-// without mutating state) and target a bounded Prometheus/Mimir endpoint rather
-// than the open web, so readOnlyHint is always true and openWorldHint is always
-// false. destructiveHint and idempotentHint are omitted because they are only
-// meaningful when readOnlyHint is false.
-func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.ServerContext, middleware []ToolMiddleware, toolName string, description string, advice string, handler PrometheusHandler, options ...mcp.ToolOption) {
+func registerPrometheusTools(s *mcpserver.MCPServer, client *Client, sc *server.ServerContext, middleware []ToolMiddleware, toolName string, description mcp.ToolOption, advice string, handler PrometheusHandler, options ...mcp.ToolOption) {
 	registerTool(s, middleware, toolName, description, advice,
 		withDynamicPrometheusClient(handler, client, sc, tenantScopeOf(toolName)), withPrometheusConnectionParams(options...)...)
 }
 
 // registerTool registers one read-only tool with the truncation middleware
 // (unless advice is noTruncation) and the user-supplied middlewares.
-func registerTool(s *mcpserver.MCPServer, middleware []ToolMiddleware, toolName string, description string, advice string, h func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error), options ...mcp.ToolOption) {
+// description is built with tooldesc.Describe: a summary line, a blank line
+// and details, so muster's discovery shows the summary whole.
+//
+// All tools in this server are read-only (they query Prometheus, Mimir or
+// Alertmanager without mutating state) and target a bounded endpoint rather
+// than the open web. destructiveHint is set to false explicitly: mcp-go
+// defaults it to true, which would report every read-only tool destructive.
+func registerTool(s *mcpserver.MCPServer, middleware []ToolMiddleware, toolName string, description mcp.ToolOption, advice string, h func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error), options ...mcp.ToolOption) {
 	baseOptions := []mcp.ToolOption{
-		mcp.WithDescription(description),
+		description,
 		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithOpenWorldHintAnnotation(false),
 		// Combined with WithInputSchemaValidation() (server-level), this rejects
 		// unknown property names so typo'd args surface as errors — SEP-1303.
@@ -332,13 +336,15 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 	}
 
 	// Query execution tools
-	registerPrometheusTools(s, client, sc, middleware, toolExecuteQuery, "Execute a PromQL instant query against Prometheus",
+	registerPrometheusTools(s, client, sc, middleware, toolExecuteQuery, tooldesc.Describe("Run a PromQL instant query: the value of a metric or expression at one point in time.",
+		"For values over a time window use execute_range_query; to find metric and label names use list_label_values."),
 		TruncationAdvice, handleExecuteQuery, withQueryEnhancementParams(
 			mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string")),
-			mcp.WithString("time", mcp.Description("Optional RFC3339 or Unix timestamp (default: current time)")),
+			mcp.WithString("time", mcp.Description("RFC3339 or Unix timestamp; default now")),
 		)...)
 
-	registerPrometheusTools(s, client, sc, middleware, toolExecuteRangeQuery, "Execute a PromQL range query with start time, end time, and step interval",
+	registerPrometheusTools(s, client, sc, middleware, toolExecuteRangeQuery, tooldesc.Describe("Run a PromQL range query: the values of a metric or expression over a time window, one sample per step.",
+		"For a single point in time use execute_query."),
 		TruncationAdvice, handleExecuteRangeQuery, withQueryEnhancementParams(
 			mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string")),
 			mcp.WithString("start", mcp.Required(), mcp.Description("Start time as RFC3339 or Unix timestamp")),
@@ -347,54 +353,63 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 		)...)
 
 	// Metrics discovery tools
-	registerPrometheusTools(s, client, sc, middleware, "get_metric_metadata", "Get metadata for a specific metric",
+	registerPrometheusTools(s, client, sc, middleware, "get_metric_metadata", tooldesc.Describe("Get a metric's metadata: its type, help text and unit.",
+		"For the metadata as each scrape target exposes it use get_targets_metadata."),
 		discoveryAdvice, handleGetMetricMetadata,
-		mcp.WithString("metric", mcp.Required(), mcp.Description("The name of the metric to retrieve metadata for")),
-		mcp.WithString("limit", mcp.Description("Maximum number of metadata entries to return")),
+		mcp.WithString("metric", mcp.Required(), mcp.Description("Metric name")),
+		mcp.WithString("limit", mcp.Description("Maximum entries returned")),
 	)
 
 	// Label and series discovery tools
-	registerPrometheusTools(s, client, sc, middleware, "list_label_names", "Get all available label names",
+	registerPrometheusTools(s, client, sc, middleware, "list_label_names", tooldesc.Describe("List the label names of the stored series, optionally of those matching a selector.",
+		"For one label's values use list_label_values."),
 		discoveryAdvice, handleListLabelNames, withTimeFilteringParams(withLabelMatchingParams(
-			mcp.WithString("limit", mcp.Description("Maximum number of label names to return")),
+			mcp.WithString("limit", mcp.Description("Maximum entries returned")),
 		)...)...)
 
-	registerPrometheusTools(s, client, sc, middleware, "list_label_values", "Get values for a specific label",
+	registerPrometheusTools(s, client, sc, middleware, "list_label_values", tooldesc.Describe("List the values of one label; the label __name__ lists the metric names.",
+		"For the full label sets of matching series use find_series."),
 		discoveryAdvice, handleListLabelValues, withTimeFilteringParams(withLabelMatchingParams(
-			mcp.WithString("label", mcp.Required(), mcp.Description("The label name to get values for")),
-			mcp.WithString("limit", mcp.Description("Maximum number of label values to return")),
+			mcp.WithString("label", mcp.Required(), mcp.Description("Label name")),
+			mcp.WithString("limit", mcp.Description("Maximum entries returned")),
 		)...)...)
 
-	registerPrometheusTools(s, client, sc, middleware, "find_series", "Find series by label matchers",
+	registerPrometheusTools(s, client, sc, middleware, "find_series", tooldesc.Describe("Find time series by label matcher: the label set of every matching series.",
+		"Returns labels, not samples: for values use execute_query."),
 		discoveryAdvice, handleFindSeries, withTimeFilteringParams(
 			mcp.WithArray("matches", mcp.Required(), mcp.Description("Array of label matchers (e.g., ['{job=\"prometheus\"}', '{__name__=~\"http_.*\"}'])")),
-			mcp.WithString("limit", mcp.Description("Maximum number of series to return")),
+			mcp.WithString("limit", mcp.Description("Maximum entries returned")),
 		)...)
 
 	// Target and system information tools
-	registerPrometheusTools(s, client, sc, middleware, "get_targets", "Get information about all scrape targets", bulkAdvice, handleGetTargets)
+	registerPrometheusTools(s, client, sc, middleware, "get_targets", tooldesc.Describe("List the scrape targets with their health, last scrape and last error, active and dropped.",
+		"For the metrics a target exposes use get_targets_metadata."), bulkAdvice, handleGetTargets)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_build_info", "Get build information about the Prometheus server", noTruncation, handleGetBuildInfo)
+	registerPrometheusTools(s, client, sc, middleware, "get_build_info", tooldesc.Describe("Get the Prometheus server's build information: version, revision, branch and Go version.",
+		"For runtime state use get_runtime_info."), noTruncation, handleGetBuildInfo)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_runtime_info", "Get runtime information about the Prometheus server", noTruncation, handleGetRuntimeInfo)
+	registerPrometheusTools(s, client, sc, middleware, "get_runtime_info", tooldesc.Describe("Get the Prometheus server's runtime information: start time, storage retention, config reload status.",
+		"For the version use get_build_info."), noTruncation, handleGetRuntimeInfo)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_flags", "Get runtime flags that Prometheus was launched with", noTruncation, handleGetFlags)
+	registerPrometheusTools(s, client, sc, middleware, "get_flags", tooldesc.Describe("Get the command-line flags the Prometheus server was started with.",
+		"For the scrape and rule configuration use get_config."), noTruncation, handleGetFlags)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_config", "Get Prometheus configuration", bulkAdvice, handleGetConfig)
+	registerPrometheusTools(s, client, sc, middleware, "get_config", tooldesc.Describe("Get the loaded Prometheus configuration file: scrape configs, rule files, remote write.",
+		"For the live state of the scrape targets use get_targets."), bulkAdvice, handleGetConfig)
 
 	// Alerting tools
 	registerPrometheusTools(s, client, sc, middleware, toolGetAlerts,
-		"Get active alerts from the ruler (GET /api/v1/alerts)."+rulerTenantAdvice,
+		tooldesc.Describe("List the firing and pending alerts of the Prometheus or Mimir ruler.",
+			"For the alerts that notify, not silenced or inhibited, use get_alertmanager_alerts. "+rulerTenantDetails),
 		alertsAdvice, handleGetAlerts)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_alertmanagers", "Get AlertManager discovery information", noTruncation, handleGetAlertManagers)
+	registerPrometheusTools(s, client, sc, middleware, "get_alertmanagers", tooldesc.Describe("List the Alertmanager instances Prometheus discovered to send alerts to, active and dropped.",
+		"For the alerts in Alertmanager use get_alertmanager_alerts."), noTruncation, handleGetAlertManagers)
 
 	registerTool(s, middleware, toolGetAlertmanagerAlerts,
-		"Get the alerts that notify from Alertmanager: active, neither silenced nor inhibited, oldest first, "+
-			"with fingerprint, alertname, severity, start time, labels, annotations and receivers. "+
-			"Filters are applied by the Alertmanager. On Mimir the Alertmanager serves one tenant per request: "+
-			"under OAuth the caller's alerting tenants are read, every one when there are several and the alerts merged, each marked with its tenant; "+
-			"org_id, pipe-separated for several, narrows the read. Without OAuth pass org_id when no default tenant is configured.",
+		tooldesc.Describe("List the alerts that notify from Alertmanager: active, not silenced or inhibited, with labels and receivers.",
+			"For firing and pending alerts at the ruler use get_alerts. On Mimir every alerting tenant of the caller is read and merged; "+
+				"org_id, pipe-separated for several, narrows the read."),
 		alertmanagerAdvice,
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleGetAlertmanagerAlerts(ctx, req, sc)
@@ -409,8 +424,8 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 	)
 
 	registerPrometheusTools(s, client, sc, middleware, toolGetRules,
-		"Get recording and alerting rules. The optional filters map onto the query parameters of GET /api/v1/rules and are applied server-side, "+
-			"so prefer them over post-processing a full dump."+rulerTenantAdvice,
+		tooldesc.Describe("List the alerting and recording rules of the Prometheus or Mimir ruler, filtered server-side.",
+			"Prefer the filters and exclude_alerts over a full dump. "+rulerTenantDetails),
 		bulkAdvice, handleGetRules,
 		mcp.WithString(paramRuleType, mcp.Enum(RuleTypeAlert, RuleTypeRecord),
 			mcp.Description("Return only alerting rules ('alert') or recording rules ('record'); omit for both")),
@@ -425,27 +440,31 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 	)
 
 	// Advanced tools
-	registerPrometheusTools(s, client, sc, middleware, "get_tsdb_stats", "Get TSDB cardinality statistics",
+	registerPrometheusTools(s, client, sc, middleware, "get_tsdb_stats", tooldesc.Describe("Get TSDB cardinality statistics: series count and the metrics and labels with the most series.",
+		"Use it to find what drives cardinality; for the series of one metric use find_series."),
 		bulkAdvice, handleGetTSDBStats,
-		mcp.WithString("limit", mcp.Description("Maximum number of stats entries to return")),
+		mcp.WithString("limit", mcp.Description("Maximum entries returned")),
 	)
 
-	registerPrometheusTools(s, client, sc, middleware, "query_exemplars", "Query exemplars for traces",
+	registerPrometheusTools(s, client, sc, middleware, "query_exemplars", tooldesc.Describe("Query exemplars for a PromQL selector: the trace IDs attached to its samples in a time window.",
+		"For the metric values use execute_range_query."),
 		discoveryAdvice, handleQueryExemplars,
-		mcp.WithString("query", mcp.Required(), mcp.Description("PromQL query string to find exemplars for")),
+		mcp.WithString("query", mcp.Required(), mcp.Description("PromQL selector")),
 		mcp.WithString("start", mcp.Required(), mcp.Description("Start time as RFC3339 or Unix timestamp")),
 		mcp.WithString("end", mcp.Required(), mcp.Description("End time as RFC3339 or Unix timestamp")),
 	)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_targets_metadata", "Get metadata about metrics from specific targets",
+	registerPrometheusTools(s, client, sc, middleware, "get_targets_metadata", tooldesc.Describe("Get metric metadata per scrape target: type, help text and unit as each target exposes them.",
+		"For one metric's metadata across targets use get_metric_metadata."),
 		discoveryAdvice, handleGetTargetsMetadata,
-		mcp.WithString("match_target", mcp.Description("Target matcher to filter targets")),
-		mcp.WithString("metric", mcp.Description("Metric name to filter metadata for")),
-		mcp.WithString("limit", mcp.Description("Maximum number of metadata entries to return")),
+		mcp.WithString("match_target", mcp.Description("Label selector of the targets")),
+		mcp.WithString("metric", mcp.Description("Metric name")),
+		mcp.WithString("limit", mcp.Description("Maximum entries returned")),
 	)
 
 	// Status / health tools
-	registerPrometheusTools(s, client, sc, middleware, "check_ready", "Check whether the Prometheus/Mimir server is ready to serve traffic (GET /-/ready)", noTruncation, handleCheckReady)
+	registerPrometheusTools(s, client, sc, middleware, "check_ready", tooldesc.Describe("Check whether the Prometheus or Mimir server is ready to serve traffic.",
+		"Use it when other tools fail to reach the server."), noTruncation, handleCheckReady)
 
 	return nil
 }

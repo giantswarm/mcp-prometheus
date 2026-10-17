@@ -52,20 +52,8 @@ func discardLogger() *slog.Logger {
 }
 
 func TestRegisterPrometheusTools(t *testing.T) {
-	s := mcpserver.NewMCPServer("test", "1.0.0")
-
-	ctx := context.Background()
-	sc, err := server.NewServerContext(ctx,
-		server.WithPrometheusConfig(server.PrometheusConfig{URL: "http://localhost:9090"}),
-		server.WithSlogLogger(discardLogger()),
-	)
-	if err != nil {
-		t.Fatalf("Failed to create server context: %v", err)
-	}
-	defer func() { _ = sc.Shutdown() }()
-
-	if err := RegisterPrometheusTools(s, sc); err != nil {
-		t.Fatalf("Failed to register tools: %v", err)
+	if n := len(newToolServer(t).ListTools()); n == 0 {
+		t.Fatal("no tools registered")
 	}
 }
 
