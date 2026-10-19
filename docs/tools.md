@@ -1,6 +1,6 @@
 # Tools
 
-Generated from the registered tools by `TestToolsDocIsCurrent`; regenerate with `TOOLS_DOC_UPDATE=1 go test ./internal/tools/prometheus/ -run TestToolsDocIsCurrent`.
+Generated from the registered tools by `TestToolsDocIsCurrent`; regenerate with `make tools-doc`.
 
 | Tool | Kind |
 |---|---|
@@ -27,7 +27,7 @@ Generated from the registered tools by `TestToolsDocIsCurrent`; regenerate with 
 ## `check_ready`
 
 ```text
-Check whether the Prometheus or Mimir server is ready to serve traffic.
+Check the readiness of the Prometheus or Mimir server: whether it is ready to serve traffic.
 
 Use it when other tools fail to reach the server.
 ```
@@ -37,11 +37,11 @@ Use it when other tools fail to reach the server.
   "additionalProperties": false,
   "properties": {
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     }
   },
@@ -55,7 +55,7 @@ Use it when other tools fail to reach the server.
 ```text
 Run a PromQL instant query: the value of a metric or expression at one point in time.
 
-For values over a time window use execute_range_query; to find metric and label names use list_label_values.
+For values over a time window use execute_range_query; for metric names use list_label_values with label __name__, for label names list_label_names.
 ```
 
 ```json
@@ -71,11 +71,11 @@ For values over a time window use execute_range_query; to find metric and label 
       "type": "string"
     },
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     },
     "query": {
@@ -95,7 +95,7 @@ For values over a time window use execute_range_query; to find metric and label 
       "type": "string"
     },
     "unlimited": {
-      "description": "'true' lifts the 50k-character output cap: the result may be huge",
+      "description": "'true' lifts the 50000-byte output cap: the result may be huge",
       "type": "string"
     }
   },
@@ -119,7 +119,7 @@ For a single point in time use execute_query.
   "additionalProperties": false,
   "properties": {
     "end": {
-      "description": "End time as RFC3339 or Unix timestamp",
+      "description": "End time (RFC3339)",
       "type": "string"
     },
     "limit": {
@@ -131,11 +131,11 @@ For a single point in time use execute_query.
       "type": "string"
     },
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     },
     "query": {
@@ -143,7 +143,7 @@ For a single point in time use execute_query.
       "type": "string"
     },
     "start": {
-      "description": "Start time as RFC3339 or Unix timestamp",
+      "description": "Start time (RFC3339)",
       "type": "string"
     },
     "stats": {
@@ -159,7 +159,7 @@ For a single point in time use execute_query.
       "type": "string"
     },
     "unlimited": {
-      "description": "'true' lifts the 50k-character output cap: the result may be huge",
+      "description": "'true' lifts the 50000-byte output cap: the result may be huge",
       "type": "string"
     }
   },
@@ -176,9 +176,9 @@ For a single point in time use execute_query.
 ## `find_series`
 
 ```text
-Find time series by label matcher: the label set of every matching series.
+Find time series by label matcher: the label sets of the matching series.
 
-Returns labels, not samples: for values use execute_query.
+Lists the first 50 series and counts the rest, whatever limit says; narrow with matches. Returns labels, not samples: for values use execute_query.
 ```
 
 ```json
@@ -198,11 +198,11 @@ Returns labels, not samples: for values use execute_query.
       "type": "array"
     },
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     },
     "start_time": {
@@ -222,7 +222,7 @@ Returns labels, not samples: for values use execute_query.
 ```text
 List the alerts that notify from Alertmanager: active, not silenced or inhibited, with labels and receivers.
 
-For firing and pending alerts at the ruler use get_alerts. On Mimir every alerting tenant of the caller is read and merged; org_id, pipe-separated for several, narrows the read. An answer over 50k characters keeps the oldest complete alerts and a truncated marker with the omitted count.
+For firing and pending alerts at the ruler use get_alerts. Under OAuth without org_id every alerting tenant of yours is read and merged; otherwise org_id, pipe-separated for several, or the configured default tenant. An answer over 50000 bytes keeps the oldest complete alerts and a truncated marker with the omitted count.
 ```
 
 ```json
@@ -246,7 +246,7 @@ For firing and pending alerts at the ruler use get_alerts. On Mimir every alerti
       "type": "number"
     },
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID) of the Mimir Alertmanager to read, pipe-separated for several; under OAuth one of the caller's alerting tenants",
+      "description": "Mimir Alertmanager tenant (X-Scope-OrgID), 'a|b' for several; under OAuth only your alerting tenants, all of them when omitted",
       "type": "string"
     },
     "receiver": {
@@ -264,7 +264,7 @@ For firing and pending alerts at the ruler use get_alerts. On Mimir every alerti
 ```text
 List the Alertmanager instances Prometheus discovered to send alerts to, active and dropped.
 
-For the alerts in Alertmanager use get_alertmanager_alerts.
+For the alerts in Alertmanager use get_alertmanager_alerts. Prometheus only: Mimir does not serve this endpoint.
 ```
 
 ```json
@@ -272,11 +272,11 @@ For the alerts in Alertmanager use get_alertmanager_alerts.
   "additionalProperties": false,
   "properties": {
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     }
   },
@@ -290,7 +290,7 @@ For the alerts in Alertmanager use get_alertmanager_alerts.
 ```text
 List the firing and pending alerts of the Prometheus or Mimir ruler.
 
-For the alerts that notify, not silenced or inhibited, use get_alertmanager_alerts. On Mimir it reads one tenant per call, chosen with org_id.
+For the alerts that notify, not silenced or inhibited, use get_alertmanager_alerts. On Mimir it reads one tenant per call: pass org_id when you have several alerting tenants or no default tenant is configured.
 ```
 
 ```json
@@ -298,11 +298,11 @@ For the alerts that notify, not silenced or inhibited, use get_alertmanager_aler
   "additionalProperties": false,
   "properties": {
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, one per call",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     }
   },
@@ -324,11 +324,11 @@ For runtime state use get_runtime_info.
   "additionalProperties": false,
   "properties": {
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     }
   },
@@ -342,7 +342,7 @@ For runtime state use get_runtime_info.
 ```text
 Get the loaded Prometheus configuration file: scrape configs, rule files, remote write.
 
-For the live state of the scrape targets use get_targets.
+For the live state of the scrape targets use get_targets. Prometheus only: Mimir does not serve this endpoint.
 ```
 
 ```json
@@ -350,11 +350,11 @@ For the live state of the scrape targets use get_targets.
   "additionalProperties": false,
   "properties": {
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     }
   },
@@ -368,7 +368,7 @@ For the live state of the scrape targets use get_targets.
 ```text
 Get the command-line flags the Prometheus server was started with.
 
-For the scrape and rule configuration use get_config.
+For the scrape and rule configuration use get_config. Prometheus only: Mimir does not serve this endpoint.
 ```
 
 ```json
@@ -376,11 +376,11 @@ For the scrape and rule configuration use get_config.
   "additionalProperties": false,
   "properties": {
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     }
   },
@@ -410,11 +410,11 @@ For the metadata as each scrape target exposes it use get_targets_metadata.
       "type": "string"
     },
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     }
   },
@@ -430,7 +430,7 @@ For the metadata as each scrape target exposes it use get_targets_metadata.
 ```text
 List the alerting and recording rules of the Prometheus or Mimir ruler, filtered server-side.
 
-Prefer the filters and exclude_alerts over a full dump. On Mimir it reads one tenant per call, chosen with org_id.
+Prefer the filters and exclude_alerts over a full dump. On Mimir it reads one tenant per call: pass org_id when you have several alerting tenants or no default tenant is configured.
 ```
 
 ```json
@@ -449,11 +449,11 @@ Prefer the filters and exclude_alerts over a full dump. On Mimir it reads one te
       "type": "array"
     },
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, one per call",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     },
     "rule_group": {
@@ -489,7 +489,7 @@ Prefer the filters and exclude_alerts over a full dump. On Mimir it reads one te
 ```text
 Get the Prometheus server's runtime information: start time, storage retention, config reload status.
 
-For the version use get_build_info.
+For the version use get_build_info. Prometheus only: Mimir does not serve this endpoint.
 ```
 
 ```json
@@ -497,11 +497,11 @@ For the version use get_build_info.
   "additionalProperties": false,
   "properties": {
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     }
   },
@@ -513,9 +513,9 @@ For the version use get_build_info.
 ## `get_targets`
 
 ```text
-List the scrape targets with their health, last scrape and last error, active and dropped.
+List Prometheus's scrape targets with their health, last scrape and last error, active and dropped.
 
-For the metrics a target exposes use get_targets_metadata.
+For the metrics a target exposes use get_targets_metadata. Prometheus only: Mimir does not serve this endpoint.
 ```
 
 ```json
@@ -523,11 +523,11 @@ For the metrics a target exposes use get_targets_metadata.
   "additionalProperties": false,
   "properties": {
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     }
   },
@@ -541,7 +541,7 @@ For the metrics a target exposes use get_targets_metadata.
 ```text
 Get metric metadata per scrape target: type, help text and unit as each target exposes them.
 
-For one metric's metadata across targets use get_metric_metadata.
+For one metric's metadata across targets use get_metric_metadata. Prometheus only: Mimir does not serve this endpoint.
 ```
 
 ```json
@@ -561,11 +561,11 @@ For one metric's metadata across targets use get_metric_metadata.
       "type": "string"
     },
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     }
   },
@@ -577,9 +577,9 @@ For one metric's metadata across targets use get_metric_metadata.
 ## `get_tsdb_stats`
 
 ```text
-Get TSDB cardinality statistics: series count and the metrics and labels with the most series.
+Get Prometheus TSDB cardinality statistics: series count and the metrics and labels with the most series.
 
-Use it to find what drives cardinality; for the series of one metric use find_series.
+For the series of one metric use find_series. Prometheus only: Mimir does not serve this endpoint.
 ```
 
 ```json
@@ -591,11 +591,11 @@ Use it to find what drives cardinality; for the series of one metric use find_se
       "type": "string"
     },
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     }
   },
@@ -629,11 +629,11 @@ For one label's values use list_label_values.
       "type": "array"
     },
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     },
     "start_time": {
@@ -651,7 +651,7 @@ For one label's values use list_label_values.
 ```text
 List the values of one label; the label __name__ lists the metric names.
 
-For the full label sets of matching series use find_series.
+Lists the first 100 values and counts the rest, whatever limit says; narrow with matches. For the full label sets of matching series use find_series.
 ```
 
 ```json
@@ -675,11 +675,11 @@ For the full label sets of matching series use find_series.
       "type": "array"
     },
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     },
     "start_time": {
@@ -707,15 +707,15 @@ For the metric values use execute_range_query.
   "additionalProperties": false,
   "properties": {
     "end": {
-      "description": "End time as RFC3339 or Unix timestamp",
+      "description": "End time (RFC3339)",
       "type": "string"
     },
     "org_id": {
-      "description": "Tenant (X-Scope-OrgID)",
+      "description": "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted",
       "type": "string"
     },
     "prometheus_url": {
-      "description": "Prometheus or Mimir URL, if not the configured one",
+      "description": "Prometheus or Mimir (…/prometheus) URL, if not the configured one",
       "type": "string"
     },
     "query": {
@@ -723,7 +723,7 @@ For the metric values use execute_range_query.
       "type": "string"
     },
     "start": {
-      "description": "Start time as RFC3339 or Unix timestamp",
+      "description": "Start time (RFC3339)",
       "type": "string"
     }
   },

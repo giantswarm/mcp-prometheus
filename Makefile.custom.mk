@@ -9,6 +9,10 @@ lint-yaml: ## Run YAML linter
 .PHONY: check
 check: lint-yaml ## Run YAML linter
 
+.PHONY: tools-doc
+tools-doc: ## Regenerate docs/tools.md from the registered tools
+	TOOLS_DOC_UPDATE=1 go test ./internal/tools/prometheus/ -run TestToolsDocIsCurrent
+
 ##@ Testing
 
 .PHONY: test-vet
