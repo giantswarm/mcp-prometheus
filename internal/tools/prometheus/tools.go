@@ -93,14 +93,14 @@ const (
 	// rulerTenantDetails ends the ruler tools' description details: Mimir's
 	// ruler API serves one tenant per request, and the refusal names the
 	// caller's tenants when org_id is missing.
-	rulerTenantDetails = "On Mimir it reads one tenant per call: pass org_id when you have several alerting tenants or no default tenant is configured."
+	rulerTenantDetails = "On Mimir it reads one tenant per call: pass org_id if no default tenant is set."
 
 	// prometheusOnlyDetails ends the details of the tools whose endpoint
 	// Mimir does not serve under its /prometheus prefix.
-	prometheusOnlyDetails = "Prometheus only: Mimir does not serve this endpoint."
+	prometheusOnlyDetails = "Prometheus only."
 
 	// maxListedSeries and maxListedLabelValues cap the lines find_series and
-	// list_label_values print; the rest is counted, whatever limit says.
+	// list_label_values print, however high limit is; the rest is counted.
 	maxListedSeries      = 50
 	maxListedLabelValues = 100
 
@@ -121,13 +121,13 @@ const (
 
 // Common parameter builders to reduce repetition
 func withPrometheusConnectionParams(scope tenantScope, options ...mcp.ToolOption) []mcp.ToolOption {
-	orgID := "Mimir tenant, 'a|b' for several; under OAuth all of yours when omitted"
+	orgID := "Mimir tenant, 'a|b' for several"
 	if scope == scopeAlerting {
 		orgID = "Mimir tenant, one per call"
 	}
 	connectionParams := []mcp.ToolOption{
 		mcp.WithString("prometheus_url",
-			mcp.Description("Prometheus or Mimir (…/prometheus) URL, if not the configured one"),
+			mcp.Description("URL if not the configured one; Mimir's ends in /prometheus"),
 		),
 		mcp.WithString(paramOrgID, mcp.Description(orgID)),
 	}
@@ -382,7 +382,7 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 		)...)...)
 
 	registerPrometheusTools(s, client, sc, middleware, "list_label_values", tooldesc.Describe("List the values of one label; the label __name__ lists the metric names.",
-		fmt.Sprintf("Lists the first %d values and counts the rest, whatever limit says; narrow with matches. "+
+		fmt.Sprintf("Lists at most %d values, even with a higher limit; narrow with matches. "+
 			"For the full label sets of matching series use find_series.", maxListedLabelValues)),
 		discoveryAdvice, handleListLabelValues, withTimeFilteringParams(withLabelMatchingParams(
 			mcp.WithString("label", mcp.Required(), mcp.Description("Label name")),
@@ -390,7 +390,7 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 		)...)...)
 
 	registerPrometheusTools(s, client, sc, middleware, "find_series", tooldesc.Describe("Find time series by label matcher: the label sets of the matching series.",
-		fmt.Sprintf("Lists the first %d series and counts the rest, whatever limit says; narrow with matches. "+
+		fmt.Sprintf("Lists at most %d series, even with a higher limit; narrow with matches. "+
 			"Returns labels, not samples: for values use execute_query.", maxListedSeries)),
 		discoveryAdvice, handleFindSeries, withTimeFilteringParams(
 			mcp.WithArray("matches", mcp.Required(), mcp.Description("Array of label matchers (e.g., ['{job=\"prometheus\"}', '{__name__=~\"http_.*\"}'])")),
@@ -398,7 +398,7 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 		)...)
 
 	// Target and system information tools
-	registerPrometheusTools(s, client, sc, middleware, "get_targets", tooldesc.Describe("List Prometheus's scrape targets with their health, last scrape and last error, active and dropped.",
+	registerPrometheusTools(s, client, sc, middleware, "get_targets", tooldesc.Describe("List Prometheus's scrape targets (not on Mimir) with their health, last scrape and last error, active and dropped.",
 		"For the metrics a target exposes use get_targets_metadata. "+prometheusOnlyDetails), bulkAdvice, handleGetTargets)
 
 	registerPrometheusTools(s, client, sc, middleware, "get_build_info", tooldesc.Describe("Get the Prometheus server's build information: version, revision, branch and Go version.",
@@ -424,8 +424,7 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 
 	registerTool(s, middleware, toolGetAlertmanagerAlerts,
 		tooldesc.Describe("List the alerts that notify from Alertmanager: active, not silenced or inhibited, with labels and receivers.",
-			fmt.Sprintf("For firing and pending alerts at the ruler use get_alerts. Under OAuth without org_id every alerting tenant of yours "+
-				"is read and merged; otherwise org_id, pipe-separated for several, or the configured default tenant. "+
+			fmt.Sprintf("For firing and pending alerts at the ruler use get_alerts. "+
 				"An answer over %d bytes keeps the oldest complete alerts and a truncated marker with the omitted count.", MaxResultLength)),
 		noTruncation,
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -434,7 +433,7 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 		mcp.WithString(paramAlertmanagerURL,
 			mcp.Description("Alertmanager base URL (e.g. 'http://mimir-gateway.mimir/alertmanager' or 'http://alertmanager:9093'); defaults to ALERTMANAGER_URL")),
 		mcp.WithString(paramOrgID,
-			mcp.Description("Mimir Alertmanager tenant (X-Scope-OrgID), 'a|b' for several; under OAuth only your alerting tenants, all of them when omitted")),
+			mcp.Description("Mimir Alertmanager tenant, 'a|b' for several; under OAuth only your alerting tenants, all of them when omitted")),
 		mcp.WithString(paramReceiver, mcp.Description("Only alerts routed to a receiver matching this regex")),
 		mcp.WithArray(paramFilter, mcp.WithStringItems(),
 			mcp.Description("Only alerts matching every label matcher, e.g. ['team=\"bumblebee\"', 'severity=~\"page|notify\"']")),
@@ -459,7 +458,7 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 	)
 
 	// Advanced tools
-	registerPrometheusTools(s, client, sc, middleware, "get_tsdb_stats", tooldesc.Describe("Get Prometheus TSDB cardinality statistics: series count and the metrics and labels with the most series.",
+	registerPrometheusTools(s, client, sc, middleware, "get_tsdb_stats", tooldesc.Describe("Get TSDB cardinality statistics, Prometheus only: series count and the metrics and labels with the most series.",
 		"For the series of one metric use find_series. "+prometheusOnlyDetails),
 		bulkAdvice, handleGetTSDBStats,
 		withLimitParam(),
@@ -473,7 +472,7 @@ func RegisterPrometheusTools(s *mcpserver.MCPServer, sc *server.ServerContext, m
 		mcp.WithString("end", mcp.Required(), mcp.Description("End time (RFC3339)")),
 	)
 
-	registerPrometheusTools(s, client, sc, middleware, "get_targets_metadata", tooldesc.Describe("Get metric metadata per scrape target: type, help text and unit as each target exposes them.",
+	registerPrometheusTools(s, client, sc, middleware, "get_targets_metadata", tooldesc.Describe("Get metric metadata per scrape target, Prometheus only: type, help text and unit as each target exposes them.",
 		"For one metric's metadata across targets use get_metric_metadata. "+prometheusOnlyDetails),
 		discoveryAdvice, handleGetTargetsMetadata,
 		mcp.WithString("match_target", mcp.Description("Label selector of the targets")),
