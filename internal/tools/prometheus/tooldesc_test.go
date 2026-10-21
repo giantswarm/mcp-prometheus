@@ -2,10 +2,12 @@ package prometheus
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/giantswarm/mcp-toolkit/tooldesc"
 	"github.com/giantswarm/mcp-toolkit/tooldesc/tooldesctest"
+	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
 	"github.com/giantswarm/mcp-prometheus/internal/server"
@@ -13,28 +15,44 @@ import (
 
 // toolsDocHeader heads the generated docs/tools.md.
 const toolsDocHeader = "# Tools\n\nGenerated from the registered tools by `TestToolsDocIsCurrent`; " +
-	"regenerate with `TOOLS_DOC_UPDATE=1 go test ./internal/tools/prometheus/ -run TestToolsDocIsCurrent`."
+	"regenerate with `make tools-doc`."
 
-// newToolServer is an MCP server with every tool registered.
-func newToolServer(t *testing.T) *mcpserver.MCPServer {
-	t.Helper()
+// docsServer is an MCP server with every tool registered, built once.
+var docsServer = sync.OnceValues(func() (*mcpserver.MCPServer, error) {
 	sc, err := server.NewServerContext(context.Background(),
 		server.WithPrometheusConfig(server.PrometheusConfig{URL: "http://localhost:9090"}),
 		server.WithSlogLogger(discardLogger()),
 	)
 	if err != nil {
-		t.Fatalf("NewServerContext: %v", err)
+		return nil, err
 	}
-	t.Cleanup(func() { _ = sc.Shutdown() })
-
 	s := mcpserver.NewMCPServer("test", "1.0.0", mcpserver.WithToolCapabilities(true))
 	if err := RegisterPrometheusTools(s, sc); err != nil {
-		t.Fatalf("RegisterPrometheusTools: %v", err)
+		return nil, err
+	}
+	return s, nil
+})
+
+func newToolServer(t *testing.T) *mcpserver.MCPServer {
+	t.Helper()
+	s, err := docsServer()
+	if err != nil {
+		t.Fatalf("build the tool server: %v", err)
 	}
 	return s
 }
 
-func TestToolDescriptions(t *testing.T) {
+// registeredTool is the named tool as the server lists it.
+func registeredTool(t *testing.T, name string) mcp.Tool {
+	t.Helper()
+	st := newToolServer(t).GetTool(name)
+	if st == nil {
+		t.Fatalf("no tool %s", name)
+	}
+	return st.Tool
+}
+
+func TestToolDescriptionBudgets(t *testing.T) {
 	if err := tooldesc.CheckServer(newToolServer(t), tooldesc.DefaultBudget); err != nil {
 		t.Error(err)
 	}
