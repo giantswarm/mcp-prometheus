@@ -4,11 +4,11 @@ go 1.26.0
 
 require (
 	github.com/giantswarm/go-selfupdate v1.6.3
-	github.com/giantswarm/mcp-oauth v1.6.0
+	github.com/giantswarm/mcp-oauth v1.7.10
 	github.com/giantswarm/mcp-toolkit v0.4.0
 	github.com/giantswarm/selfupdate-cosign v0.3.4
 	github.com/mark3labs/mcp-go v1.3.0
-	github.com/prometheus/client_golang v1.24.1
+	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/common v0.72.1
 	github.com/spf13/cobra v1.10.2
 	go.opentelemetry.io/otel v1.47.0
@@ -39,7 +39,7 @@ require (
 	github.com/digitorus/timestamp v0.0.0-20231217203849-220c5c2851b7 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/go-fed/httpsig v1.1.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.5 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/analysis v1.0.0 // indirect
@@ -104,7 +104,7 @@ require (
 	github.com/transparency-dev/formats v0.1.1 // indirect
 	github.com/transparency-dev/merkle v0.0.2 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
-	github.com/valkey-io/valkey-go v1.0.78 // indirect
+	github.com/valkey-io/valkey-go v1.0.79 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
