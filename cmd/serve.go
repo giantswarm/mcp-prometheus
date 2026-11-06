@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/giantswarm/mcp-oauth/handler"
+	"github.com/giantswarm/mcp-toolkit/brand"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 
@@ -249,6 +250,7 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 	mcpSrv := mcpserver.NewMCPServer("mcp-prometheus", rootCmd.Version,
 		mcpserver.WithToolCapabilities(true),
 		mcpserver.WithInputSchemaValidation(),
+		brand.WithIcon(prometheusLogo),
 	)
 
 	// Register Prometheus tools with observability instrumentation
