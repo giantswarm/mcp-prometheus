@@ -280,7 +280,7 @@ func TestInputSchemaValidation_GetRulesFilters(t *testing.T) {
 		args map[string]any
 		want string // substring the validation error must contain
 	}{
-		{"type outside the enum", map[string]any{paramRuleType: testInvalidRuleType}, testInvalidRuleType},
+		{"type outside the enum", map[string]any{paramRuleType: testInvalidRuleType}, "/" + paramRuleType},
 		{"rule_name as a string", map[string]any{paramRuleName: testRuleName}, paramRuleName},
 		{"exclude_alerts as a string", map[string]any{paramExcludeAlerts: queryTrue}, paramExcludeAlerts},
 		{"unknown property", map[string]any{"rulename": []any{"x"}}, "rulename"},
