@@ -980,6 +980,10 @@ func handleListLabelNames(ctx context.Context, request mcp.CallToolRequest, clie
 		responseText += fmt.Sprintf("\nWarnings: %v", result.Warnings)
 	}
 
+	if len(result.Infos) > 0 {
+		responseText += fmt.Sprintf("\nInfo: %v", result.Infos)
+	}
+
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
@@ -1048,6 +1052,10 @@ func handleListLabelValues(ctx context.Context, request mcp.CallToolRequest, cli
 		responseText += fmt.Sprintf("\nWarnings: %v", result.Warnings)
 	}
 
+	if len(result.Infos) > 0 {
+		responseText += fmt.Sprintf("\nInfo: %v", result.Infos)
+	}
+
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
@@ -1113,6 +1121,10 @@ func handleFindSeries(ctx context.Context, request mcp.CallToolRequest, client *
 
 	if len(result.Warnings) > 0 {
 		responseText += fmt.Sprintf("\nWarnings: %v", result.Warnings)
+	}
+
+	if len(result.Infos) > 0 {
+		responseText += fmt.Sprintf("\nInfo: %v", result.Infos)
 	}
 
 	return &mcp.CallToolResult{
