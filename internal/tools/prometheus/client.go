@@ -173,13 +173,17 @@ func (c *Client) ExecuteQuery(ctx context.Context, query string, timeParam strin
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	result, warnings, err := c.client.Query(ctx, query, queryTime)
+	result, warnings, infos, err := c.client.Query(ctx, query, queryTime)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 
 	if len(warnings) > 0 {
 		c.logger.Warn("Query returned warnings", "warnings", warnings)
+	}
+
+	if len(infos) > 0 {
+		c.logger.Debug("Query returned info annotations", "infos", infos)
 	}
 
 	return &QueryResult{
@@ -241,13 +245,17 @@ func (c *Client) ExecuteQueryWithOptions(ctx context.Context, query string, time
 		apiOptions = append(apiOptions, v1.WithTimeout(timeout))
 	}
 
-	result, warnings, err := c.client.Query(ctx, query, queryTime, apiOptions...)
+	result, warnings, infos, err := c.client.Query(ctx, query, queryTime, apiOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 
 	if len(warnings) > 0 {
 		c.logger.Warn("Query returned warnings", "warnings", warnings)
+	}
+
+	if len(infos) > 0 {
+		c.logger.Debug("Query returned info annotations", "infos", infos)
 	}
 
 	return &QueryResult{
@@ -289,13 +297,17 @@ func (c *Client) ExecuteRangeQuery(ctx context.Context, query, start, end, step 
 		Step:  time.Duration(stepDuration),
 	}
 
-	result, warnings, err := c.client.QueryRange(ctx, query, queryRange)
+	result, warnings, infos, err := c.client.QueryRange(ctx, query, queryRange)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute range query: %w", err)
 	}
 
 	if len(warnings) > 0 {
 		c.logger.Warn("Range query returned warnings", "warnings", warnings)
+	}
+
+	if len(infos) > 0 {
+		c.logger.Debug("Range query returned info annotations", "infos", infos)
 	}
 
 	return &QueryResult{
@@ -364,13 +376,17 @@ func (c *Client) ExecuteRangeQueryWithOptions(ctx context.Context, query, start,
 		apiOptions = append(apiOptions, v1.WithTimeout(timeout))
 	}
 
-	result, warnings, err := c.client.QueryRange(ctx, query, queryRange, apiOptions...)
+	result, warnings, infos, err := c.client.QueryRange(ctx, query, queryRange, apiOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute range query: %w", err)
 	}
 
 	if len(warnings) > 0 {
 		c.logger.Warn("Range query returned warnings", "warnings", warnings)
+	}
+
+	if len(infos) > 0 {
+		c.logger.Debug("Range query returned info annotations", "infos", infos)
 	}
 
 	return &QueryResult{
@@ -490,6 +506,7 @@ func (c *Client) GetTargets(ctx context.Context) (*TargetsResult, error) {
 type LabelNamesResult struct {
 	LabelNames []string `json:"labelNames"`
 	Warnings   []string `json:"warnings,omitempty"`
+	Infos      []string `json:"infos,omitempty"`
 }
 
 // ListLabelNames gets all available label names
@@ -526,7 +543,7 @@ func (c *Client) ListLabelNames(ctx context.Context, options LabelOptions) (*Lab
 		}
 	}
 
-	labelNames, warnings, err := c.client.LabelNames(ctx, options.Matches, startTime, endTime, apiOptions...)
+	labelNames, warnings, infos, err := c.client.LabelNames(ctx, options.Matches, startTime, endTime, apiOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list label names: %w", err)
 	}
@@ -535,6 +552,11 @@ func (c *Client) ListLabelNames(ctx context.Context, options LabelOptions) (*Lab
 	warningStrs := make([]string, len(warnings))
 	for i, w := range warnings {
 		warningStrs[i] = string(w)
+	}
+
+	infoStrs := make([]string, len(infos))
+	for i, n := range infos {
+		infoStrs[i] = string(n)
 	}
 
 	// LabelNames returns model.LabelNames, so convert it to a plain string
@@ -547,6 +569,7 @@ func (c *Client) ListLabelNames(ctx context.Context, options LabelOptions) (*Lab
 	return &LabelNamesResult{
 		LabelNames: labelNameStrs,
 		Warnings:   warningStrs,
+		Infos:      infoStrs,
 	}, nil
 }
 
@@ -554,6 +577,7 @@ func (c *Client) ListLabelNames(ctx context.Context, options LabelOptions) (*Lab
 type LabelValuesResult struct {
 	LabelValues []string `json:"labelValues"`
 	Warnings    []string `json:"warnings,omitempty"`
+	Infos       []string `json:"infos,omitempty"`
 }
 
 // LabelOptions holds options for label-related queries
@@ -598,7 +622,7 @@ func (c *Client) ListLabelValues(ctx context.Context, label string, options Labe
 		}
 	}
 
-	labelValues, warnings, err := c.client.LabelValues(ctx, label, options.Matches, startTime, endTime, apiOptions...)
+	labelValues, warnings, infos, err := c.client.LabelValues(ctx, label, options.Matches, startTime, endTime, apiOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list label values: %w", err)
 	}
@@ -615,9 +639,15 @@ func (c *Client) ListLabelValues(ctx context.Context, label string, options Labe
 		warningStrs[i] = string(w)
 	}
 
+	infoStrs := make([]string, len(infos))
+	for i, n := range infos {
+		infoStrs[i] = string(n)
+	}
+
 	return &LabelValuesResult{
 		LabelValues: values,
 		Warnings:    warningStrs,
+		Infos:       infoStrs,
 	}, nil
 }
 
@@ -625,6 +655,7 @@ func (c *Client) ListLabelValues(ctx context.Context, label string, options Labe
 type SeriesResult struct {
 	Series   []map[string]string `json:"series"`
 	Warnings []string            `json:"warnings,omitempty"`
+	Infos    []string            `json:"infos,omitempty"`
 }
 
 // SeriesOptions holds options for series queries
@@ -668,7 +699,7 @@ func (c *Client) FindSeries(ctx context.Context, matches []string, options Serie
 		}
 	}
 
-	series, warnings, err := c.client.Series(ctx, matches, startTime, endTime, apiOptions...)
+	series, warnings, infos, err := c.client.Series(ctx, matches, startTime, endTime, apiOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find series: %w", err)
 	}
@@ -688,9 +719,15 @@ func (c *Client) FindSeries(ctx context.Context, matches []string, options Serie
 		warningStrs[i] = string(w)
 	}
 
+	infoStrs := make([]string, len(infos))
+	for i, n := range infos {
+		infoStrs[i] = string(n)
+	}
+
 	return &SeriesResult{
 		Series:   result,
 		Warnings: warningStrs,
+		Infos:    infoStrs,
 	}, nil
 }
 

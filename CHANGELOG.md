@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * The chart's CiliumNetworkPolicy admits ingress from muster's namespace only (`ciliumNetworkPolicy.ingress.muster`, default `agent-platform`), no longer from the whole cluster: the server port is open to muster, to the Gateway's proxies while `gatewayAPI.enabled` (`ciliumNetworkPolicy.ingress.gatewayPeers`, default Envoy Gateway in `envoy-gateway-system`) and to `ciliumNetworkPolicy.ingress.additionalPeers`; the metrics port to `ciliumNetworkPolicy.ingress.metricsScrapers` (default alloy-metrics in `kube-system`); every port to the kubelet's probes (the host entity). `ciliumNetworkPolicy.labels` and `annotations` accept any key.
 * Use the canonical `io.giantswarm.application.team` annotation key for team ownership (value `atlas` unchanged).
 * Adapt the Prometheus API client to `prometheus/client_golang` v1.24: `LabelNames` now returns `model.LabelNames` and `Rules` takes a matcher list. Behaviour is unchanged — `GetRules` passes no matchers, so all rules are still returned.
+* Adapt the Prometheus API client to `prometheus/client_golang` v1.25: `Query`, `QueryRange`, `LabelNames`, `LabelValues` and `Series` also return Prometheus info annotations. `list_label_names`, `list_label_values` and `find_series` return them as `infos` next to `warnings`; instant and range queries log them at debug level, as they log warnings.
+* Update mcp-oauth to v1.10.2: a reused refresh token revokes only its own token family, and a reused authorization code revokes the tokens it produced.
 
 ### Fixed
 
