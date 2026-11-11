@@ -6,7 +6,7 @@ require (
 	github.com/giantswarm/go-selfupdate v1.7.7
 	github.com/giantswarm/mcp-oauth v1.13.2
 	github.com/giantswarm/mcp-toolkit v0.5.3
-	github.com/giantswarm/selfupdate-cosign v0.3.4
+	github.com/giantswarm/selfupdate-cosign v0.3.28
 	github.com/mark3labs/mcp-go v1.5.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/common v0.72.1
@@ -39,7 +39,6 @@ require (
 	github.com/digitorus/pkcs7 v0.0.0-20230818184609-3a137a874352 // indirect
 	github.com/digitorus/timestamp v0.0.0-20231217203849-220c5c2851b7 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
-	github.com/go-chi/chi/v5 v5.5.0 // indirect
 	github.com/go-fed/httpsig v1.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.9 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
@@ -103,7 +102,6 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/theupdateframework/go-tuf/v2 v2.4.2 // indirect
-	github.com/tink-crypto/tink-go/v2 v2.9.0 // indirect
 	github.com/transparency-dev/formats v0.1.1 // indirect
 	github.com/transparency-dev/merkle v0.0.2 // indirect
 	github.com/ulikunitz/xz v0.5.17 // indirect
