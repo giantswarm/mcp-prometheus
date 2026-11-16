@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"log/slog"
@@ -417,7 +418,8 @@ func TestLoadRootCAsValid(t *testing.T) {
 		t.Fatal("expected non-nil pool")
 	}
 
-	resp, err := httpClientWithRootCAs(pool).Get(server.URL)
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}
+	resp, err := client.Get(server.URL)
 	if err != nil {
 		t.Fatalf("request against pool-verified server: %v", err)
 	}

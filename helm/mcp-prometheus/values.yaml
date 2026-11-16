@@ -247,11 +247,11 @@ app:
     # MUST remain false in production.
     allowPublicRegistration: false
 
-    # Allow OIDC discovery and the forwarded-ID-token JWKS fetch against a Dex
-    # instance whose hostname resolves to a private/internal IP address (e.g.
-    # dex.<mc>.<baseDomain> on a private management cluster). When true, both
-    # HTTP clients bypass built-in SSRF protection that blocks RFC-1918 addresses.
-    # TLS verification is still enforced.
+    # Allow the forwarded-ID-token JWKS fetch against a Dex instance whose
+    # hostname resolves to a private/internal IP address (e.g.
+    # dex.<mc>.<baseDomain> on a private management cluster). OIDC discovery
+    # and the token calls reach a private Dex and follow HTTP(S)_PROXY and
+    # NO_PROXY without this setting. TLS verification is still enforced.
     # Set to true only when the Dex issuer URL uses internal DNS.
     allowPrivateURLs: false
 

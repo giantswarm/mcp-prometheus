@@ -7,17 +7,14 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	mcpoauth "github.com/giantswarm/mcp-oauth"
 	"github.com/giantswarm/mcp-oauth/handler"
 	"github.com/giantswarm/mcp-oauth/providers"
 	"github.com/giantswarm/mcp-oauth/providers/dex"
 	"github.com/giantswarm/mcp-oauth/providers/google"
-	mcpoidc "github.com/giantswarm/mcp-oauth/providers/oidc"
 	"github.com/giantswarm/mcp-oauth/security"
 	"github.com/giantswarm/mcp-oauth/storage"
 	"github.com/giantswarm/mcp-oauth/storage/memory"
@@ -89,11 +86,11 @@ type Config struct {
 	// Google) and cryptographically valid.
 	TrustedAudiences []string
 
-	// AllowPrivateURLs permits OIDC discovery and the forwarded-ID-token JWKS
-	// fetch against Dex instances whose hostname resolves to a private/internal
-	// IP address (e.g. dex.<mc>.<baseDomain> on a private management cluster).
-	// When true, both HTTP clients bypass the built-in SSRF protection that
-	// normally blocks connections to RFC-1918 ranges.
+	// AllowPrivateURLs permits the forwarded-ID-token JWKS fetch against a Dex
+	// whose hostname resolves to a private/internal IP address (e.g.
+	// dex.<mc>.<baseDomain> on a private management cluster). It does not
+	// change how Dex itself is reached: the Dex client always allows private
+	// addresses and follows HTTP_PROXY, HTTPS_PROXY and NO_PROXY.
 	//
 	// Set MCP_OAUTH_ALLOW_PRIVATE_URLS=true only in trusted internal environments
 	// where the Dex issuer URL uses internal DNS. TLS verification is still enforced.
@@ -212,14 +209,6 @@ func newDexProvider(cfg Config, logger *slog.Logger) (providers.Provider, *x509.
 		return nil, nil, fmt.Errorf("oauth: DEX_ISSUER_URL, DEX_CLIENT_ID, DEX_CLIENT_SECRET must all be set for MCP_OAUTH_PROVIDER=%s", ProviderDex)
 	}
 
-	dexCfg := &dex.Config{
-		IssuerURL:    cfg.DexIssuerURL,
-		ClientID:     cfg.DexClientID,
-		ClientSecret: cfg.DexClientSecret,
-		RedirectURL:  cfg.RedirectURL,
-		// Request groups so the tenant resolver can match GrafanaOrganization RBAC.
-		Scopes: []string{"openid", "profile", "email", "groups", "offline_access"},
-	}
 	rootCAs, err := loadRootCAs(cfg.DexCAFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("oauth: %w", err)
@@ -227,23 +216,31 @@ func newDexProvider(cfg Config, logger *slog.Logger) (providers.Provider, *x509.
 	if rootCAs != nil {
 		logger.Info("Using custom CA for Dex and JWKS TLS verification", "caFile", cfg.DexCAFile)
 	}
-	switch {
-	case cfg.AllowPrivateURLs:
-		// Inject an HTTP client that allows connections to private/internal IP
-		// ranges. Required when the Dex issuer URL is an internal DNS name that
-		// resolves to an RFC-1918 address (e.g. on a private management cluster).
-		// TLS verification is still enforced by this client. A nil CA pool
-		// selects the system trust store.
-		dexCfg.HTTPClient = mcpoidc.NewPrivateIPAllowedHTTPClient(30*time.Second, rootCAs)
-	case rootCAs != nil:
-		dexCfg.HTTPClient = httpClientWithRootCAs(rootCAs)
+	if cfg.AllowPrivateURLs {
+		logger.Info("MCP_OAUTH_ALLOW_PRIVATE_URLS no longer changes how Dex is reached: the Dex client already reaches private addresses and follows HTTP_PROXY, HTTPS_PROXY and NO_PROXY; the setting only relaxes the forwarded-ID-token JWKS fetch")
 	}
-	provider, err := dex.NewProvider(dexCfg)
+	provider, err := dex.NewProvider(dexProviderConfig(cfg, rootCAs))
 	if err != nil {
 		return nil, nil, fmt.Errorf("oauth: create Dex provider: %w", err)
 	}
 	logger.Info("Using Dex OIDC provider", "issuer", cfg.DexIssuerURL)
 	return provider, rootCAs, nil
+}
+
+// dexProviderConfig leaves the HTTP client to mcp-oauth: its default Dex
+// client reaches private addresses, follows the proxy environment variables
+// and refuses redirects to another host. Setting HTTPClient or AllowPrivateIP
+// would replace it with a client that ignores the proxy.
+func dexProviderConfig(cfg Config, rootCAs *x509.CertPool) *dex.Config {
+	return &dex.Config{
+		IssuerURL:    cfg.DexIssuerURL,
+		ClientID:     cfg.DexClientID,
+		ClientSecret: cfg.DexClientSecret,
+		RedirectURL:  cfg.RedirectURL,
+		// Request groups so the tenant resolver can match GrafanaOrganization RBAC.
+		Scopes:  []string{"openid", "profile", "email", "groups", "offline_access"},
+		RootCAs: rootCAs,
+	}
 }
 
 // newGoogleProvider validates the GOOGLE_* configuration and builds the Google
@@ -296,20 +293,6 @@ func loadRootCAs(caFile string) (*x509.CertPool, error) {
 	return pool, nil
 }
 
-// httpClientWithRootCAs returns an HTTP client whose transport verifies TLS
-// against the given root CA pool.
-func httpClientWithRootCAs(pool *x509.CertPool) *http.Client {
-	return &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				RootCAs:    pool,
-				MinVersion: tls.VersionTLS12,
-			},
-		},
-		Timeout: 30 * time.Second,
-	}
-}
-
 // newHandlerWithProvider wires a pre-built provider into the mcp-oauth server.
 // It is separated from NewHandler so that tests can inject a mock provider
 // without requiring a live Dex instance. rootCAs verifies JWKS endpoint TLS
@@ -335,7 +318,7 @@ func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cf
 }
 
 // serverConfig builds the mcp-oauth server configuration from cfg.
-// AllowPrivateURLs also relaxes the SSRF guard of the forwarded-ID-token JWKS
+// AllowPrivateURLs relaxes the SSRF guard of the forwarded-ID-token JWKS
 // client: a private Dex serves its keys from the same private host as its
 // discovery document. The JWKS URL comes from the configured provider's
 // issuer, never from the token, so the allowance reaches that Dex only.
