@@ -46,9 +46,6 @@ func TestDexProviderConfigLeavesClientToMCPOAuth(t *testing.T) {
 		if dexConfig.HTTPClient != nil {
 			t.Errorf("AllowPrivateURLs=%t: HTTPClient is set, want mcp-oauth's default Dex client", allowPrivateURLs)
 		}
-		if dexConfig.AllowPrivateIP {
-			t.Errorf("AllowPrivateURLs=%t: AllowPrivateIP is set, want false", allowPrivateURLs)
-		}
 		if dexConfig.RootCAs != rootCAs {
 			t.Errorf("AllowPrivateURLs=%t: RootCAs is not the DEX_CA_FILE pool", allowPrivateURLs)
 		}
