@@ -457,38 +457,40 @@ func TestPrivateIPJWKSFromEnv(t *testing.T) {
 	const aliasName = "OAUTH_ALLOW_PRIVATE_URLS"
 
 	tests := []struct {
-		name      string
-		canonical string
-		obsolete  string
-		alias     string
-		want      bool
-		wantError string
+		name           string
+		canonical      string
+		obsolete       string
+		alias          string
+		want           bool
+		wantDeprecated string
+		wantError      string
 	}{
 		{name: "unset is off"},
 		{name: "canonical true", canonical: envTrue, want: true},
 		{name: "canonical 1", canonical: "1", want: true},
 		{name: "canonical false", canonical: envFalse},
 		{name: "canonical malformed", canonical: "yes", wantError: canonicalName},
-		{name: "obsolete false", obsolete: envFalse},
-		{name: "obsolete true", obsolete: envTrue, wantError: obsoleteName + " is obsolete"},
-		{name: "obsolete true cannot be shadowed", canonical: envFalse, obsolete: envTrue, wantError: obsoleteName + " is obsolete"},
+		{name: "obsolete false", obsolete: envFalse, wantDeprecated: obsoleteName},
+		{name: "obsolete true", obsolete: envTrue, want: true, wantDeprecated: obsoleteName},
+		{name: "obsolete true wins over canonical false", canonical: envFalse, obsolete: envTrue, want: true, wantDeprecated: obsoleteName},
 		{name: "obsolete malformed", canonical: envFalse, obsolete: "yes", wantError: obsoleteName},
-		{name: "alias false", alias: envFalse},
-		{name: "alias true cannot be shadowed", canonical: envFalse, obsolete: envFalse, alias: envTrue, wantError: aliasName + " is obsolete"},
-		{name: "alias malformed cannot be shadowed", canonical: envFalse, obsolete: envFalse, alias: "nope", wantError: aliasName},
+		{name: "alias false", alias: envFalse, wantDeprecated: aliasName},
+		{name: "alias true wins over canonical false", canonical: envFalse, obsolete: envFalse, alias: envTrue, want: true, wantDeprecated: obsoleteName},
+		{name: "alias malformed", canonical: envFalse, obsolete: envFalse, alias: "nope", wantError: aliasName},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Setenv(canonicalName, testCase.canonical)
 			t.Setenv(obsoleteName, testCase.obsolete)
 			t.Setenv(aliasName, testCase.alias)
-			got, err := privateIPJWKSFromEnv()
+			got, deprecated, err := privateIPJWKSFromEnv()
 			if testCase.wantError != "" {
 				require.ErrorContains(t, err, testCase.wantError)
 				return
 			}
 			require.NoError(t, err)
 			require.Equal(t, testCase.want, got)
+			require.Equal(t, testCase.wantDeprecated, deprecated)
 		})
 	}
 }

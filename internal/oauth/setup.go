@@ -91,6 +91,10 @@ type Config struct {
 	// HTTPS and certificate verification remain required.
 	AllowPrivateIPJWKS bool
 
+	// DeprecatedPrivateURLsEnv names the deprecated variable
+	// AllowPrivateIPJWKS was also read from, empty when none is set.
+	DeprecatedPrivateURLsEnv string
+
 	// DexCAFile is the path to a PEM-encoded CA certificate file used to verify
 	// TLS for Dex and for JWKS endpoints. Required when Dex is served with a
 	// certificate from a private/internal CA (e.g. on private management
@@ -126,28 +130,29 @@ const storageTypeValkey = "valkey"
 
 // ConfigFromEnv builds a Config by reading the standard environment variables.
 func ConfigFromEnv() (Config, error) {
-	allowPrivateIPJWKS, err := privateIPJWKSFromEnv()
+	allowPrivateIPJWKS, deprecatedPrivateURLsEnv, err := privateIPJWKSFromEnv()
 	if err != nil {
 		return Config{}, err
 	}
 	cfg := Config{
-		Issuer:                  os.Getenv("MCP_OAUTH_ISSUER"),
-		EncryptionKey:           os.Getenv("MCP_OAUTH_ENCRYPTION_KEY"),
-		AllowPublicRegistration: os.Getenv("MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION") == envTrue,
-		StorageType:             os.Getenv("OAUTH_STORAGE"),
-		ValkeyURL:               os.Getenv("VALKEY_URL"),
-		ValkeyPassword:          os.Getenv("VALKEY_PASSWORD"),
-		ValkeyTLS:               os.Getenv("VALKEY_TLS_ENABLED") == envTrue,
-		ValkeyKeyPrefix:         os.Getenv("VALKEY_KEY_PREFIX"),
-		Provider:                strings.ToLower(strings.TrimSpace(os.Getenv("MCP_OAUTH_PROVIDER"))),
-		RedirectURL:             os.Getenv("OAUTH_REDIRECT_URL"),
-		GoogleClientID:          os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret:      os.Getenv("GOOGLE_CLIENT_SECRET"),
-		DexIssuerURL:            os.Getenv("DEX_ISSUER_URL"),
-		DexClientID:             os.Getenv("DEX_CLIENT_ID"),
-		DexClientSecret:         os.Getenv("DEX_CLIENT_SECRET"),
-		AllowPrivateIPJWKS:      allowPrivateIPJWKS,
-		DexCAFile:               os.Getenv("DEX_CA_FILE"),
+		DeprecatedPrivateURLsEnv: deprecatedPrivateURLsEnv,
+		Issuer:                   os.Getenv("MCP_OAUTH_ISSUER"),
+		EncryptionKey:            os.Getenv("MCP_OAUTH_ENCRYPTION_KEY"),
+		AllowPublicRegistration:  os.Getenv("MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION") == envTrue,
+		StorageType:              os.Getenv("OAUTH_STORAGE"),
+		ValkeyURL:                os.Getenv("VALKEY_URL"),
+		ValkeyPassword:           os.Getenv("VALKEY_PASSWORD"),
+		ValkeyTLS:                os.Getenv("VALKEY_TLS_ENABLED") == envTrue,
+		ValkeyKeyPrefix:          os.Getenv("VALKEY_KEY_PREFIX"),
+		Provider:                 strings.ToLower(strings.TrimSpace(os.Getenv("MCP_OAUTH_PROVIDER"))),
+		RedirectURL:              os.Getenv("OAUTH_REDIRECT_URL"),
+		GoogleClientID:           os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:       os.Getenv("GOOGLE_CLIENT_SECRET"),
+		DexIssuerURL:             os.Getenv("DEX_ISSUER_URL"),
+		DexClientID:              os.Getenv("DEX_CLIENT_ID"),
+		DexClientSecret:          os.Getenv("DEX_CLIENT_SECRET"),
+		AllowPrivateIPJWKS:       allowPrivateIPJWKS,
+		DexCAFile:                os.Getenv("DEX_CA_FILE"),
 	}
 	if cfg.Provider == "" {
 		cfg.Provider = ProviderDex
@@ -167,26 +172,27 @@ func ConfigFromEnv() (Config, error) {
 	return cfg, nil
 }
 
-func privateIPJWKSFromEnv() (bool, error) {
-	for _, name := range []string{"MCP_OAUTH_ALLOW_PRIVATE_URLS", "OAUTH_ALLOW_PRIVATE_URLS"} {
-		if raw := os.Getenv(name); raw != "" {
-			obsolete, err := strconv.ParseBool(raw)
-			if err != nil {
-				return false, fmt.Errorf("%s: expected a boolean: %w", name, err)
-			}
-			if obsolete {
-				return false, fmt.Errorf("%s is obsolete; remove it; for private-address JWKS fetching use MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS=true; Dex discovery needs no setting", name)
-			}
+// privateIPJWKSFromEnv reads MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS and its
+// deprecated aliases; any of them set to true permits private JWKS addresses.
+// It returns the first deprecated alias set, empty when none is.
+func privateIPJWKSFromEnv() (bool, string, error) {
+	var allow bool
+	var deprecated string
+	for _, name := range []string{"MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS", "MCP_OAUTH_ALLOW_PRIVATE_URLS", "OAUTH_ALLOW_PRIVATE_URLS"} {
+		raw := os.Getenv(name)
+		if raw == "" {
+			continue
 		}
-	}
-	if raw := os.Getenv("MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS"); raw != "" {
 		value, err := strconv.ParseBool(raw)
 		if err != nil {
-			return false, fmt.Errorf("MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS: expected a boolean: %w", err)
+			return false, "", fmt.Errorf("%s: expected a boolean: %w", name, err)
 		}
-		return value, nil
+		if name != "MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS" && deprecated == "" {
+			deprecated = name
+		}
+		allow = allow || value
 	}
-	return false, nil
+	return allow, deprecated, nil
 }
 
 // NewHandler initialises the mcp-oauth Handler from the given Config.
@@ -235,6 +241,9 @@ func newDexProvider(cfg Config, logger *slog.Logger) (providers.Provider, *x509.
 	}
 	if rootCAs != nil {
 		logger.Info("Using custom CA for Dex and JWKS TLS verification", "caFile", cfg.DexCAFile)
+	}
+	if cfg.DeprecatedPrivateURLsEnv != "" {
+		logger.Warn("DEPRECATED: " + cfg.DeprecatedPrivateURLsEnv + " is read as MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS and will be refused in v0.14.0; set MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS instead")
 	}
 	if cfg.AllowPrivateIPJWKS {
 		logger.Warn("MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS permits the configured Dex JWKS endpoint to resolve to private addresses; TLS verification remains required", "cwe", "CWE-918")
