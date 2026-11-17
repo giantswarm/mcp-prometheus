@@ -1,3 +1,6 @@
+{{- if .Values.app.oauth.allowPrivateURLs -}}
+{{- fail "app.oauth.allowPrivateURLs=true is obsolete; remove it; use app.oauth.allowPrivateIPJWKS=true for private-address JWKS fetching; Dex discovery needs no setting" -}}
+{{- end -}}
 {{- $hasDexCA := and .Values.app.oauth.enabled .Values.app.oauth.dexCASecret.name -}}
 {{- $oauthProvider := include "mcp-prometheus.oauthProvider" . -}}
 apiVersion: apps/v1
@@ -157,8 +160,8 @@ spec:
             {{- end }}
             - name: MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION
               value: {{ .Values.app.oauth.allowPublicRegistration | quote }}
-            - name: MCP_OAUTH_ALLOW_PRIVATE_URLS
-              value: {{ .Values.app.oauth.allowPrivateURLs | quote }}
+            - name: MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS
+              value: {{ .Values.app.oauth.allowPrivateIPJWKS | quote }}
             {{- if .Values.app.oauth.trustedAudiences }}
             - name: OAUTH_TRUSTED_AUDIENCES
               value: {{ .Values.app.oauth.trustedAudiences | join "," | quote }}

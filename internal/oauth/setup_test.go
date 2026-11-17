@@ -1,7 +1,7 @@
 package oauth
 
 import (
-	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"log/slog"
@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/giantswarm/mcp-oauth/providers/mock"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -30,7 +31,7 @@ func TestConfigFromEnvDefaults(t *testing.T) {
 	for _, key := range []string{
 		"MCP_OAUTH_ISSUER", "MCP_OAUTH_ENCRYPTION_KEY",
 		"MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION",
-		"MCP_OAUTH_ALLOW_PRIVATE_URLS",
+		"MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS",
 		"OAUTH_STORAGE", "VALKEY_URL", "VALKEY_PASSWORD",
 		"VALKEY_TLS_ENABLED", "VALKEY_KEY_PREFIX",
 		"DEX_ISSUER_URL", "DEX_CLIENT_ID", "DEX_CLIENT_SECRET", "DEX_REDIRECT_URL",
@@ -39,7 +40,8 @@ func TestConfigFromEnvDefaults(t *testing.T) {
 		t.Setenv(key, "")
 	}
 
-	cfg := ConfigFromEnv()
+	cfg, err := ConfigFromEnv()
+	require.NoError(t, err)
 
 	if cfg.Provider != ProviderDex {
 		t.Errorf("expected Provider %q by default, got %q", ProviderDex, cfg.Provider)
@@ -56,8 +58,8 @@ func TestConfigFromEnvDefaults(t *testing.T) {
 	if cfg.ValkeyTLS {
 		t.Error("expected ValkeyTLS == false by default")
 	}
-	if cfg.AllowPrivateURLs {
-		t.Error("expected AllowPrivateURLs == false by default")
+	if cfg.AllowPrivateIPJWKS {
+		t.Error("expected AllowPrivateIPJWKS == false by default")
 	}
 }
 
@@ -77,7 +79,8 @@ func TestConfigFromEnvReadsValues(t *testing.T) {
 	t.Setenv("OAUTH_REDIRECT_URL", "")
 	t.Setenv("MCP_OAUTH_PROVIDER", "")
 
-	cfg := ConfigFromEnv()
+	cfg, err := ConfigFromEnv()
+	require.NoError(t, err)
 
 	checks := []struct {
 		name string
@@ -110,12 +113,13 @@ func TestConfigFromEnvReadsValues(t *testing.T) {
 	}
 }
 
-func TestConfigFromEnvAllowPrivateURLs(t *testing.T) {
-	t.Setenv("MCP_OAUTH_ALLOW_PRIVATE_URLS", "true")
+func TestConfigFromEnvAllowPrivateIPJWKS(t *testing.T) {
+	t.Setenv("MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS", "true")
 
-	cfg := ConfigFromEnv()
-	if !cfg.AllowPrivateURLs {
-		t.Error("expected AllowPrivateURLs == true when MCP_OAUTH_ALLOW_PRIVATE_URLS=true")
+	cfg, err := ConfigFromEnv()
+	require.NoError(t, err)
+	if !cfg.AllowPrivateIPJWKS {
+		t.Error("expected AllowPrivateIPJWKS == true when MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS=true")
 	}
 }
 
@@ -126,7 +130,8 @@ func TestConfigFromEnvGoogleProvider(t *testing.T) {
 	t.Setenv("OAUTH_REDIRECT_URL", testRedirectURL)
 	t.Setenv("DEX_REDIRECT_URL", "https://legacy.example.com/oauth/callback")
 
-	cfg := ConfigFromEnv()
+	cfg, err := ConfigFromEnv()
+	require.NoError(t, err)
 
 	if cfg.Provider != ProviderGoogle {
 		t.Errorf("Provider: got %q, want %q", cfg.Provider, ProviderGoogle)
@@ -151,7 +156,7 @@ func TestNewHandlerUnknownProvider(t *testing.T) {
 		RedirectURL: testRedirectURL,
 		Provider:    "okta",
 	}
-	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
+	_, _, err := NewHandler(t.Context(), cfg, slog.Default())
 	if err == nil {
 		t.Fatal("expected error for unknown provider")
 	}
@@ -167,7 +172,7 @@ func TestNewHandlerGoogleMissingClientID(t *testing.T) {
 		Provider:           ProviderGoogle,
 		GoogleClientSecret: testSecret,
 	}
-	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
+	_, _, err := NewHandler(t.Context(), cfg, slog.Default())
 	if err == nil {
 		t.Fatal("expected error when GOOGLE_CLIENT_ID is empty")
 	}
@@ -183,7 +188,7 @@ func TestNewHandlerGoogleMissingClientSecret(t *testing.T) {
 		Provider:       ProviderGoogle,
 		GoogleClientID: testGoogleClientID,
 	}
-	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
+	_, _, err := NewHandler(t.Context(), cfg, slog.Default())
 	if err == nil {
 		t.Fatal("expected error when GOOGLE_CLIENT_SECRET is empty")
 	}
@@ -203,10 +208,10 @@ func TestNewHandlerGoogleProvider(t *testing.T) {
 		GoogleClientID:     testGoogleClientID,
 		GoogleClientSecret: testSecret,
 		// DEX_CA_FILE / private URLs are dex-only: they must be ignored, not fatal.
-		DexCAFile:        filepath.Join(t.TempDir(), "absent.crt"),
-		AllowPrivateURLs: true,
+		DexCAFile:          filepath.Join(t.TempDir(), "absent.crt"),
+		AllowPrivateIPJWKS: true,
 	}
-	h, cleanup, err := NewHandler(context.Background(), cfg, slog.Default())
+	h, cleanup, err := NewHandler(t.Context(), cfg, slog.Default())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -223,7 +228,7 @@ func TestNewHandlerMissingIssuer(t *testing.T) {
 		DexClientSecret: testSecret,
 		RedirectURL:     "https://app.example.com/callback",
 	}
-	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
+	_, _, err := NewHandler(t.Context(), cfg, slog.Default())
 	if err == nil {
 		t.Error("expected error when Issuer is empty")
 	}
@@ -236,7 +241,7 @@ func TestNewHandlerMissingDexIssuer(t *testing.T) {
 		DexClientSecret: testSecret,
 		RedirectURL:     "https://app.example.com/callback",
 	}
-	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
+	_, _, err := NewHandler(t.Context(), cfg, slog.Default())
 	if err == nil {
 		t.Error("expected error when DexIssuerURL is empty")
 	}
@@ -250,7 +255,7 @@ func TestNewHandlerMissingRedirectURL(t *testing.T) {
 		DexClientSecret: testSecret,
 		// RedirectURL intentionally missing
 	}
-	_, _, err := NewHandler(context.Background(), cfg, slog.Default())
+	_, _, err := NewHandler(t.Context(), cfg, slog.Default())
 	if err == nil {
 		t.Error("expected error when RedirectURL is empty")
 	}
@@ -259,7 +264,7 @@ func TestNewHandlerMissingRedirectURL(t *testing.T) {
 // --- newStore (package-internal) ---
 
 func TestNewStoreMemory(t *testing.T) {
-	store, cleanup, err := newStore(context.Background(), Config{StorageType: ""}, slog.Default(), nil)
+	store, cleanup, err := newStore(t.Context(), Config{StorageType: ""}, slog.Default(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error creating memory store: %v", err)
 	}
@@ -273,7 +278,7 @@ func TestNewStoreMemory(t *testing.T) {
 }
 
 func TestNewStoreValkeyMissingURL(t *testing.T) {
-	_, _, err := newStore(context.Background(), Config{StorageType: storageTypeValkey, ValkeyURL: ""}, slog.Default(), nil)
+	_, _, err := newStore(t.Context(), Config{StorageType: storageTypeValkey, ValkeyURL: ""}, slog.Default(), nil)
 	if err == nil {
 		t.Error("expected error when VALKEY_URL is empty with valkey storage type")
 	}
@@ -317,7 +322,7 @@ func TestNewHandlerWithProviderMemoryStore(t *testing.T) {
 		Issuer:                  testMCPIssuer,
 		AllowPublicRegistration: true,
 	}
-	h, cleanup, err := newHandlerWithProvider(context.Background(), p, cfg, nil, slog.Default())
+	h, cleanup, err := newHandlerWithProvider(t.Context(), p, cfg, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -335,7 +340,7 @@ func TestNewHandlerWithProviderShortEncryptionKey(t *testing.T) {
 		Issuer:        testMCPIssuer,
 		EncryptionKey: "0102030405", // 5 bytes, not 32
 	}
-	_, _, err := newHandlerWithProvider(context.Background(), p, cfg, nil, slog.Default())
+	_, _, err := newHandlerWithProvider(t.Context(), p, cfg, nil, slog.Default())
 	if err == nil {
 		t.Error("expected error for short (non-32-byte) encryption key")
 	}
@@ -348,8 +353,8 @@ func TestServerConfigAllowPrivateIPJWKS(t *testing.T) {
 		want bool
 	}{
 		{"dex, flag off stays SSRF-safe", Config{Provider: ProviderDex}, false},
-		{"dex, flag on allows the private JWKS", Config{Provider: ProviderDex, AllowPrivateURLs: true}, true},
-		{"google ignores the flag", Config{Provider: ProviderGoogle, AllowPrivateURLs: true}, false},
+		{"dex, flag on allows the private JWKS", Config{Provider: ProviderDex, AllowPrivateIPJWKS: true}, true},
+		{"google ignores the flag", Config{Provider: ProviderGoogle, AllowPrivateIPJWKS: true}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -365,7 +370,8 @@ func TestServerConfigAllowPrivateIPJWKS(t *testing.T) {
 func TestConfigFromEnvDexCAFile(t *testing.T) {
 	t.Setenv("DEX_CA_FILE", "/etc/ssl/certs/dex-ca/ca.crt")
 
-	cfg := ConfigFromEnv()
+	cfg, err := ConfigFromEnv()
+	require.NoError(t, err)
 	if cfg.DexCAFile != "/etc/ssl/certs/dex-ca/ca.crt" {
 		t.Errorf("DexCAFile: got %q", cfg.DexCAFile)
 	}
@@ -417,7 +423,8 @@ func TestLoadRootCAsValid(t *testing.T) {
 		t.Fatal("expected non-nil pool")
 	}
 
-	resp, err := httpClientWithRootCAs(pool).Get(server.URL)
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}
+	resp, err := client.Get(server.URL)
 	if err != nil {
 		t.Fatalf("request against pool-verified server: %v", err)
 	}
@@ -440,5 +447,48 @@ func TestNewHandlerUnreadableDexCAFile(t *testing.T) {
 	}
 	if _, _, err := NewHandler(t.Context(), cfg, slog.Default()); err == nil {
 		t.Error("expected error for unreadable DEX_CA_FILE")
+	}
+}
+
+func TestPrivateIPJWKSFromEnv(t *testing.T) {
+	const envFalse = "false"
+	const canonicalName = "MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS"
+	const obsoleteName = "MCP_OAUTH_ALLOW_PRIVATE_URLS"
+	const aliasName = "OAUTH_ALLOW_PRIVATE_URLS"
+
+	tests := []struct {
+		name      string
+		canonical string
+		obsolete  string
+		alias     string
+		want      bool
+		wantError string
+	}{
+		{name: "unset is off"},
+		{name: "canonical true", canonical: envTrue, want: true},
+		{name: "canonical 1", canonical: "1", want: true},
+		{name: "canonical false", canonical: envFalse},
+		{name: "canonical malformed", canonical: "yes", wantError: canonicalName},
+		{name: "obsolete false", obsolete: envFalse},
+		{name: "obsolete true", obsolete: envTrue, wantError: obsoleteName + " is obsolete"},
+		{name: "obsolete true cannot be shadowed", canonical: envFalse, obsolete: envTrue, wantError: obsoleteName + " is obsolete"},
+		{name: "obsolete malformed", canonical: envFalse, obsolete: "yes", wantError: obsoleteName},
+		{name: "alias false", alias: envFalse},
+		{name: "alias true cannot be shadowed", canonical: envFalse, obsolete: envFalse, alias: envTrue, wantError: aliasName + " is obsolete"},
+		{name: "alias malformed cannot be shadowed", canonical: envFalse, obsolete: envFalse, alias: "nope", wantError: aliasName},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv(canonicalName, testCase.canonical)
+			t.Setenv(obsoleteName, testCase.obsolete)
+			t.Setenv(aliasName, testCase.alias)
+			got, err := privateIPJWKSFromEnv()
+			if testCase.wantError != "" {
+				require.ErrorContains(t, err, testCase.wantError)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, testCase.want, got)
+		})
 	}
 }

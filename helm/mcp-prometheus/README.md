@@ -124,7 +124,8 @@ changed credential restarts the server:
 | app.oauth.googleClientSecret | string | `""` |  |
 | app.oauth.encryptionKey | string | `""` |  |
 | app.oauth.allowPublicRegistration | bool | `false` |  |
-| app.oauth.allowPrivateURLs | bool | `false` |  |
+| app.oauth.allowPrivateIPJWKS | bool | `false` | Permit the configured Dex JWKS endpoint to resolve to private addresses. HTTPS and TLS verification remain required. Dex discovery and token calls already follow HTTP_PROXY, HTTPS_PROXY and NO_PROXY without this setting. |
+| app.oauth.allowPrivateURLs | bool | `false` | Obsolete; true is rejected. Use allowPrivateIPJWKS for JWKS fetching. The false compatibility value is scheduled for removal in v0.14.0 or on 2027-02-17, whichever comes first. |
 | app.oauth.dexCASecret.name | string | `""` |  |
 | app.oauth.dexCASecret.key | string | `"ca.crt"` |  |
 | app.oauth.storage.type | string | `"memory"` |  |

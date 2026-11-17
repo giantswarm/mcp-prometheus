@@ -82,8 +82,7 @@ OAuth 2.1 (when --enable-oauth is set):
   DEX_CLIENT_SECRET             - Dex OAuth client secret (required)
   DEX_CA_FILE                   - Optional: PEM CA file for Dex/JWKS TLS verification
                                   (private-CA installations; added to the system pool)
-  MCP_OAUTH_ALLOW_PRIVATE_URLS  - Optional: allow OIDC discovery and forwarded-token JWKS
-                                  against private-IP Dex hosts
+  MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS - Optional: allow JWKS fetching against private-IP Dex hosts
 
   Provider google:
   GOOGLE_CLIENT_ID              - Google OAuth client ID (required)
@@ -155,7 +154,10 @@ func runServe(transport string, debugMode bool, enableOAuth bool,
 			return fmt.Errorf("--enable-oauth is not supported with stdio transport")
 		}
 
-		oauthCfg := oauth.ConfigFromEnv()
+		oauthCfg, err := oauth.ConfigFromEnv()
+		if err != nil {
+			return fmt.Errorf("invalid OAuth configuration: %w", err)
+		}
 		h, cleanup, err := oauth.NewHandler(shutdownCtx, oauthCfg, logger)
 		if err != nil {
 			return fmt.Errorf("failed to initialise OAuth handler: %w", err)
