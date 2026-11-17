@@ -247,13 +247,14 @@ app:
     # MUST remain false in production.
     allowPublicRegistration: false
 
-    # Allow the forwarded-ID-token JWKS fetch against a Dex instance whose
-    # hostname resolves to a private/internal IP address (e.g.
-    # dex.<mc>.<baseDomain> on a private management cluster). OIDC discovery
-    # and the token calls reach a private Dex and follow HTTP(S)_PROXY and
-    # NO_PROXY without this setting. TLS verification is still enforced.
-    # Set to true only when the Dex issuer URL uses internal DNS.
-    allowPrivateURLs: false
+    # -- Permit the configured Dex JWKS endpoint to resolve to private addresses.
+    # HTTPS and TLS verification remain required. Dex discovery and token calls
+    # already follow HTTP_PROXY, HTTPS_PROXY and NO_PROXY without this setting.
+    allowPrivateIPJWKS: false
+    # -- Obsolete; true is rejected. Use allowPrivateIPJWKS for JWKS fetching.
+    # The false compatibility value is scheduled for removal in v0.14.0
+    # or on 2027-02-17, whichever comes first.
+    allowPrivateURLs: false  # @schema deprecated: true; const: false
 
     # Secret holding a PEM CA certificate used to verify TLS for Dex and JWKS
     # endpoints. Required on installations where Dex is served with a
