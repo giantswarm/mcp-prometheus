@@ -27,10 +27,13 @@ tests:
           content:
             name: MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS
             value: "true"
-  - it: refuses the obsolete value even when the replacement is false
+  - it: reads the deprecated value as the JWKS permission
     set:
       app.oauth.allowPrivateURLs: true
       app.oauth.allowPrivateIPJWKS: false
     asserts:
-      - failedTemplate:
-          errorPattern: "allowPrivateURLs.*value must be false"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS
+            value: "true"
