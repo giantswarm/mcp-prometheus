@@ -255,7 +255,7 @@ func newDexProvider(cfg Config, logger *slog.Logger) (providers.Provider, *x509.
 		logger.Info("Using custom CA for Dex and JWKS TLS verification", "caFile", cfg.DexCAFile)
 	}
 	if cfg.DeprecatedPrivateURLsEnv != "" {
-		logger.Warn("DEPRECATED: " + cfg.DeprecatedPrivateURLsEnv + " is read as MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS and will be refused in v0.14.0; set MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS instead")
+		logger.Warn("DEPRECATED: " + cfg.DeprecatedPrivateURLsEnv + " is read as MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS and will be refused in v0.14.0; remove it")
 	}
 	provider, err := dex.NewProvider(dexProviderConfig(cfg, rootCAs))
 	if err != nil {
