@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -346,23 +347,27 @@ func TestNewHandlerWithProviderShortEncryptionKey(t *testing.T) {
 	}
 }
 
-func TestServerConfigAllowPrivateIPJWKS(t *testing.T) {
-	tests := []struct {
-		name string
-		cfg  Config
-		want bool
-	}{
-		{"dex, flag off stays SSRF-safe", Config{Provider: ProviderDex}, false},
-		{"dex, flag on allows the private JWKS", Config{Provider: ProviderDex, AllowPrivateIPJWKS: true}, true},
-		{"google ignores the flag", Config{Provider: ProviderGoogle, AllowPrivateIPJWKS: true}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := serverConfig(tt.cfg, nil).AllowPrivateIPJWKS; got != tt.want {
-				t.Errorf("AllowPrivateIPJWKS = %v, want %v", got, tt.want)
-			}
+func TestServerConfigDoesNotPassPrivateIPJWKS(t *testing.T) {
+	for _, provider := range []string{ProviderDex, ProviderGoogle} {
+		t.Run(provider, func(t *testing.T) {
+			got := serverConfig(Config{Provider: provider, AllowPrivateIPJWKS: true}, nil)
+			require.False(t, got.AllowPrivateIPJWKS) //nolint:staticcheck // SA1019: asserting the deprecated field stays unset
+			require.Empty(t, got.AllowPrivateIPJWKSHosts)
 		})
 	}
+}
+
+func TestWarnPrivateIPJWKSInert(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+
+	warnPrivateIPJWKSInert(Config{}, logger)
+	require.Empty(t, buf.String())
+
+	warnPrivateIPJWKSInert(Config{AllowPrivateIPJWKS: true}, logger)
+	require.Contains(t, buf.String(), "level=WARN")
+	require.Contains(t, buf.String(), "MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS")
+	require.Contains(t, buf.String(), "has no effect")
 }
 
 // --- Dex CA file (private-CA installations) ---

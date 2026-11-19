@@ -20,11 +20,12 @@
                     "properties": {
                         "allowPrivateIPJWKS": {
                             "type": "boolean",
-                            "description": "Permit the configured Dex JWKS endpoint to resolve to private addresses. HTTPS and TLS verification remain required. Dex discovery and token calls already follow HTTP_PROXY, HTTPS_PROXY and NO_PROXY without this setting."
+                            "description": "Deprecated, no effect: the configured issuer host may resolve to a private address without it.",
+                            "deprecated": true
                         },
                         "allowPrivateURLs": {
                             "type": "boolean",
-                            "description": "Deprecated: read as allowPrivateIPJWKS; set that instead. Refused from v0.14.0.",
+                            "description": "Deprecated, no effect. Refused from v0.14.0.",
                             "deprecated": true
                         },
                         "allowPublicRegistration": {

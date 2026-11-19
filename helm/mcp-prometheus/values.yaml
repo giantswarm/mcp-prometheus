@@ -247,12 +247,10 @@ app:
     # MUST remain false in production.
     allowPublicRegistration: false
 
-    # -- Permit the configured Dex JWKS endpoint to resolve to private addresses.
-    # HTTPS and TLS verification remain required. Dex discovery and token calls
-    # already follow HTTP_PROXY, HTTPS_PROXY and NO_PROXY without this setting.
-    allowPrivateIPJWKS: false
-    # -- Deprecated: read as allowPrivateIPJWKS; set that instead. Refused
-    # from v0.14.0.
+    # -- Deprecated, no effect: the configured issuer host may resolve to a
+    # private address without it.
+    allowPrivateIPJWKS: false  # @schema deprecated: true
+    # -- Deprecated, no effect. Refused from v0.14.0.
     allowPrivateURLs: false  # @schema deprecated: true
 
     # Secret holding a PEM CA certificate used to verify TLS for Dex and JWKS

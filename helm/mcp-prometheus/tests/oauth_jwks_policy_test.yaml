@@ -6,7 +6,7 @@ set:
   app.oauth.dexClientSecret: dex-secret
   app.oauth.encryptionKey: encryption-key
 tests:
-  - it: keeps the JWKS guard enabled by default
+  - it: renders the JWKS value false by default
     asserts:
       - contains:
           path: spec.template.spec.containers[0].env
@@ -18,7 +18,7 @@ tests:
           content:
             name: MCP_OAUTH_ALLOW_PRIVATE_URLS
             value: "false"
-  - it: permits private-address JWKS fetching when explicitly configured
+  - it: still renders the deprecated JWKS value
     set:
       app.oauth.allowPrivateIPJWKS: true
     asserts:
@@ -27,7 +27,7 @@ tests:
           content:
             name: MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS
             value: "true"
-  - it: reads the deprecated value as the JWKS permission
+  - it: still renders the deprecated alias as the JWKS value
     set:
       app.oauth.allowPrivateURLs: true
       app.oauth.allowPrivateIPJWKS: false
