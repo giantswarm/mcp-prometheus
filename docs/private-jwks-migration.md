@@ -6,6 +6,11 @@ certificate verification remain required. Dex discovery and token requests honor
 `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`. Setting the key to `true` logs a warning at
 startup; remove it.
 
+When the issuer's discovery document puts `jwks_uri` on another host that resolves to an
+RFC 1918 or RFC 4193 address, list that host in `MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS`
+(comma-separated) or Helm `app.oauth.allowPrivateIPJWKSHosts`. The issuer host needs no
+entry. Loopback and link-local addresses stay refused.
+
 `MCP_OAUTH_ALLOW_PRIVATE_URLS`, `OAUTH_ALLOW_PRIVATE_URLS` and Helm
 `app.oauth.allowPrivateURLs` are deprecated aliases of the same setting and equally have
 no effect. Startup logs a deprecation warning naming the variable. Invalid boolean values

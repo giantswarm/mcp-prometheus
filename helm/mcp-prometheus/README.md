@@ -124,7 +124,8 @@ changed credential restarts the server:
 | app.oauth.googleClientSecret | string | `""` |  |
 | app.oauth.encryptionKey | string | `""` |  |
 | app.oauth.allowPublicRegistration | bool | `false` |  |
-| app.oauth.allowPrivateIPJWKS | bool | `false` | Deprecated, no effect: the configured issuer host may resolve to a private address without it. |
+| app.oauth.allowPrivateIPJWKS | bool | `false` | Deprecated, no effect: the configured issuer host may resolve to a private address without it; list any other JWKS host in allowPrivateIPJWKSHosts. |
+| app.oauth.allowPrivateIPJWKSHosts | list | `[]` | Hosts, other than the issuer's own, whose JWKS may resolve to an RFC 1918 or RFC 4193 address: a jwks_uri the IdP's discovery document puts on another host. Exact hostnames, no port. The issuer host needs no entry. Loopback and link-local stay refused. |
 | app.oauth.allowPrivateURLs | bool | `false` | Deprecated, no effect. Refused from v0.14.0. |
 | app.oauth.dexCASecret.name | string | `""` |  |
 | app.oauth.dexCASecret.key | string | `"ca.crt"` |  |

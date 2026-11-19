@@ -92,6 +92,13 @@ type Config struct {
 	// resolve to a private address on its own.
 	AllowPrivateIPJWKS bool
 
+	// AllowPrivateIPJWKSHosts lists the hosts, other than the issuer's own,
+	// whose JWKS may resolve to an RFC 1918 or RFC 4193 address: a jwks_uri
+	// the IdP's discovery document puts on another host. The issuer host needs
+	// no entry. Loopback and link-local stay refused. Read from
+	// MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS (comma-separated).
+	AllowPrivateIPJWKSHosts []string
+
 	// DeprecatedPrivateURLsEnv names the deprecated variable
 	// AllowPrivateIPJWKS was also read from, empty when none is set.
 	DeprecatedPrivateURLsEnv string
@@ -153,6 +160,8 @@ func ConfigFromEnv() (Config, error) {
 		DexClientID:              os.Getenv("DEX_CLIENT_ID"),
 		DexClientSecret:          os.Getenv("DEX_CLIENT_SECRET"),
 		AllowPrivateIPJWKS:       allowPrivateIPJWKS,
+		AllowPrivateIPJWKSHosts:  splitList(os.Getenv("MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS")),
+		TrustedAudiences:         splitList(os.Getenv("OAUTH_TRUSTED_AUDIENCES")),
 		DexCAFile:                os.Getenv("DEX_CA_FILE"),
 	}
 	if cfg.Provider == "" {
@@ -163,14 +172,19 @@ func ConfigFromEnv() (Config, error) {
 		// deployments keep working.
 		cfg.RedirectURL = os.Getenv("DEX_REDIRECT_URL")
 	}
-	if v := os.Getenv("OAUTH_TRUSTED_AUDIENCES"); v != "" {
-		for a := range strings.SplitSeq(v, ",") {
-			if a = strings.TrimSpace(a); a != "" {
-				cfg.TrustedAudiences = append(cfg.TrustedAudiences, a)
-			}
+	return cfg, nil
+}
+
+// splitList returns the non-empty, space-trimmed entries of a comma-separated
+// value, nil when there are none.
+func splitList(value string) []string {
+	var entries []string
+	for entry := range strings.SplitSeq(value, ",") {
+		if entry = strings.TrimSpace(entry); entry != "" {
+			entries = append(entries, entry)
 		}
 	}
-	return cfg, nil
+	return entries
 }
 
 // privateIPJWKSFromEnv reads MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS and its
@@ -236,7 +250,7 @@ func warnPrivateIPJWKSInert(cfg Config, logger *slog.Logger) {
 	if !cfg.AllowPrivateIPJWKS {
 		return
 	}
-	logger.Warn("MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS (Helm app.oauth.allowPrivateIPJWKS, aliases MCP_OAUTH_ALLOW_PRIVATE_URLS and OAUTH_ALLOW_PRIVATE_URLS) has no effect and will be removed; the JWKS of the configured issuer host may resolve to a private address without it")
+	logger.Warn("MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS (Helm app.oauth.allowPrivateIPJWKS, aliases MCP_OAUTH_ALLOW_PRIVATE_URLS and OAUTH_ALLOW_PRIVATE_URLS) has no effect and will be removed; the JWKS of the configured issuer host may resolve to a private address without it; list any other JWKS host in MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS (Helm app.oauth.allowPrivateIPJWKSHosts)")
 }
 
 // newDexProvider validates the DEX_* configuration and builds the Dex OIDC
@@ -356,6 +370,7 @@ func serverConfig(cfg Config, rootCAs *x509.CertPool) *mcpoauth.ServerConfig {
 		AllowPublicClientRegistration: cfg.AllowPublicRegistration,
 		AllowRefreshTokenRotation:     true,
 		TrustedAudiences:              cfg.TrustedAudiences,
+		AllowPrivateIPJWKSHosts:       cfg.AllowPrivateIPJWKSHosts,
 		JWKSRootCAs:                   rootCAs,
 	}
 }

@@ -115,6 +115,7 @@ All configuration is via environment variables.
 | `MCP_OAUTH_PROVIDER` | `dex` | Identity provider: `dex` or `google` (see the provider tables below) |
 | `OAUTH_REDIRECT_URL` | **required** | Callback URL registered at the provider (e.g. `https://mcp.example.com/oauth/callback`). The legacy `DEX_REDIRECT_URL` is still honoured when this is unset |
 | `MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION` | `false` | Allow unauthenticated dynamic client registration (dev/MCP Inspector only) |
+| `MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS` | — | Comma-separated hosts, other than the issuer's own, whose JWKS may resolve to a private address (see [below](#private-address-jwks-fetching)) |
 | `MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS` | `false` | Deprecated, no effect (see [below](#private-address-jwks-fetching)); logs a warning when `true` |
 | `OAUTH_TRUSTED_AUDIENCES` | — | Comma-separated client IDs trusted for SSO token forwarding |
 | `OAUTH_STORAGE` | `memory` | Token storage: `memory` or `valkey` |
@@ -266,8 +267,15 @@ keeps its SSRF protection, except that the configured Dex issuer host may resolv
 address. The JWKS URL comes from the configured Dex issuer, never from the token. TLS
 verification is still enforced.
 
+When the issuer's discovery document puts `jwks_uri` on another host that resolves to an
+RFC 1918 or RFC 4193 address, list that host in `MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS`
+(comma-separated; Helm `app.oauth.allowPrivateIPJWKSHosts`). Entries are exact hostnames,
+without port. The issuer host needs no entry. Loopback and link-local addresses stay refused
+for a listed host.
+
 `MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS` and Helm `app.oauth.allowPrivateIPJWKS` are deprecated and
-have no effect; setting them to `true` logs a warning.
+have no effect; setting them to `true` logs a warning. Use
+`MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS` for a JWKS host other than the issuer's.
 
 See [migration instructions](docs/private-jwks-migration.md) for obsolete private-URL settings.
 

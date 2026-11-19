@@ -159,6 +159,10 @@ spec:
               value: {{ .Values.app.oauth.allowPublicRegistration | quote }}
             - name: MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS
               value: {{ or .Values.app.oauth.allowPrivateIPJWKS .Values.app.oauth.allowPrivateURLs | quote }}
+            {{- with .Values.app.oauth.allowPrivateIPJWKSHosts }}
+            - name: MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS
+              value: {{ join "," . | quote }}
+            {{- end }}
             {{- if .Values.app.oauth.trustedAudiences }}
             - name: OAUTH_TRUSTED_AUDIENCES
               value: {{ .Values.app.oauth.trustedAudiences | join "," | quote }}

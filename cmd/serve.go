@@ -82,7 +82,12 @@ OAuth 2.1 (when --enable-oauth is set):
   DEX_CLIENT_SECRET             - Dex OAuth client secret (required)
   DEX_CA_FILE                   - Optional: PEM CA file for Dex/JWKS TLS verification
                                   (private-CA installations; added to the system pool)
-  MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS - Deprecated, no effect: the configured issuer host may resolve to a private address without it
+  MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS
+                                - Comma-separated hosts, other than the issuer's own, whose JWKS may resolve
+                                  to an RFC 1918 or RFC 4193 address (a jwks_uri the IdP's discovery document
+                                  puts on another host); loopback and link-local stay refused
+  MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS - Deprecated, no effect: the configured issuer host may resolve to a private
+                                  address without it; list any other JWKS host in MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS
 
   Provider google:
   GOOGLE_CLIENT_ID              - Google OAuth client ID (required)

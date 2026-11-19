@@ -23,6 +23,7 @@ const (
 	testMCPIssuer      = "https://mcp.example.com"
 	testRedirectURL    = "https://mcp.example.com/oauth/callback"
 	testGoogleClientID = "1234.apps.googleusercontent.com"
+	testJWKSHost       = "keys.internal.example"
 )
 
 func TestConfigFromEnvDefaults(t *testing.T) {
@@ -357,6 +358,34 @@ func TestServerConfigDoesNotPassPrivateIPJWKS(t *testing.T) {
 	}
 }
 
+func TestConfigFromEnvPrivateIPJWKSHosts(t *testing.T) {
+	t.Setenv("MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS", " "+testJWKSHost+", ,jwks.internal.example ")
+
+	cfg, err := ConfigFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, []string{testJWKSHost, "jwks.internal.example"}, cfg.AllowPrivateIPJWKSHosts)
+
+	t.Setenv("MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS", "")
+	cfg, err = ConfigFromEnv()
+	require.NoError(t, err)
+	require.Empty(t, cfg.AllowPrivateIPJWKSHosts)
+}
+
+func TestServerConfigPassesPrivateIPJWKSHosts(t *testing.T) {
+	pool := x509.NewCertPool()
+	got := serverConfig(Config{
+		Issuer:                  testMCPIssuer,
+		Provider:                ProviderDex,
+		TrustedAudiences:        []string{"muster-client"},
+		AllowPrivateIPJWKSHosts: []string{testJWKSHost},
+	}, pool)
+	require.Equal(t, testMCPIssuer, got.Issuer)
+	require.Equal(t, []string{"muster-client"}, got.TrustedAudiences)
+	require.Equal(t, []string{testJWKSHost}, got.AllowPrivateIPJWKSHosts)
+	require.Same(t, pool, got.JWKSRootCAs)
+	require.False(t, got.AllowPrivateIPJWKS) //nolint:staticcheck // SA1019: asserting the deprecated field stays unset
+}
+
 func TestWarnPrivateIPJWKSInert(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
@@ -368,6 +397,7 @@ func TestWarnPrivateIPJWKSInert(t *testing.T) {
 	require.Contains(t, buf.String(), "level=WARN")
 	require.Contains(t, buf.String(), "MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS")
 	require.Contains(t, buf.String(), "has no effect")
+	require.Contains(t, buf.String(), "MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS")
 }
 
 // --- Dex CA file (private-CA installations) ---

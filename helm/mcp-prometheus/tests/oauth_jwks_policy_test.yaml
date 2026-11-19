@@ -18,6 +18,22 @@ tests:
           content:
             name: MCP_OAUTH_ALLOW_PRIVATE_URLS
             value: "false"
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS
+  - it: lists the JWKS hosts other than the issuer's that may resolve privately
+    set:
+      app.oauth.allowPrivateIPJWKSHosts:
+        - keys.internal.example
+        - jwks.internal.example
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS
+            value: keys.internal.example,jwks.internal.example
   - it: still renders the deprecated JWKS value
     set:
       app.oauth.allowPrivateIPJWKS: true
