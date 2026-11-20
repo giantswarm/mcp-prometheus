@@ -1,5 +1,8 @@
 # mcp-prometheus
 
+CIMD is enabled by default. DCR is deprecated by MCP 2026-07-28 and remains a
+compatibility fallback; see the [OAuth registration guide](../../docs/oauth-client-registration.md).
+
 A Helm chart for mcp-prometheus - MCP server for Prometheus metrics
 
 **Homepage:** <https://github.com/giantswarm/mcp-prometheus>

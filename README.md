@@ -1,5 +1,10 @@
 # MCP Prometheus
 
+OAuth client registration: CIMD is enabled by default. DCR is deprecated by MCP
+2026-07-28 and remains a compatibility fallback. See
+[registration, consent, egress and TLS configuration](docs/oauth-client-registration.md).
+
+
 An [MCP (Model Context Protocol)][mcp] server for Prometheus and Mimir, written in Go.
 Deployed in-cluster at Giant Swarm to give AI assistants authenticated, multi-tenant access to metrics infrastructure.
 
