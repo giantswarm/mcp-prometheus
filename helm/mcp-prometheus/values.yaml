@@ -238,8 +238,9 @@ app:
     # Secret under the key GOOGLE_CLIENT_SECRET)
     googleClientSecret: ""
 
-    # AES-256-GCM encryption key for token storage (hex-encoded 32 bytes).
-    # Generate with: openssl rand -hex 32
+    # AES-256-GCM encryption key for token storage: 32 random bytes,
+    # base64-encoded. Generate with: openssl rand -base64 32
+    # A hex-encoded key (openssl rand -hex 32) is accepted as well.
     encryptionKey: ""
 
     # Allow unauthenticated dynamic client registration (RFC 7591).

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"log/slog"
 	"net/http"
@@ -334,17 +336,47 @@ func TestNewHandlerWithProviderMemoryStore(t *testing.T) {
 	}
 }
 
-func TestNewHandlerWithProviderShortEncryptionKey(t *testing.T) {
-	// A hex string that decodes to fewer than 32 bytes should fail at
-	// security.NewEncryptor (AES-256 requires exactly 32 bytes).
-	p := mock.NewProvider()
-	cfg := Config{
-		Issuer:        testMCPIssuer,
-		EncryptionKey: "0102030405", // 5 bytes, not 32
+func TestNewHandlerWithProviderEncryptionKey(t *testing.T) {
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
 	}
-	_, _, err := newHandlerWithProvider(t.Context(), p, cfg, nil, slog.Default())
-	if err == nil {
-		t.Error("expected error for short (non-32-byte) encryption key")
+	tests := []struct {
+		name    string
+		encoded string
+	}{
+		{"base64", base64.StdEncoding.EncodeToString(key)}, // openssl rand -base64 32
+		// openssl rand -hex 32. Also valid base64, where it decodes to 48 bytes.
+		{"hex", hex.EncodeToString(key)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{Issuer: testMCPIssuer, EncryptionKey: tt.encoded}
+			h, cleanup, err := newHandlerWithProvider(t.Context(), mock.NewProvider(), cfg, nil, slog.Default())
+			require.NoError(t, err)
+			defer cleanup()
+			require.NotNil(t, h)
+		})
+	}
+}
+
+func TestNewHandlerWithProviderInvalidEncryptionKey(t *testing.T) {
+	// Every rejected key fails at start with an error that names the format
+	// the server expects, so an operator can fix the Secret from the log line.
+	tests := []struct {
+		name string
+		key  string
+	}{
+		{"short base64", "AQIDBAU="}, // 5 bytes, not 32
+		{"short hex", "0102030405"},
+		{"neither base64 nor hex", "not a key!"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{Issuer: testMCPIssuer, EncryptionKey: tt.key}
+			_, _, err := newHandlerWithProvider(t.Context(), mock.NewProvider(), cfg, nil, slog.Default())
+			require.ErrorContains(t, err, "openssl rand -base64 32")
+		})
 	}
 }
 
