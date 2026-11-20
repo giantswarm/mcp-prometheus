@@ -367,12 +367,12 @@ func newHandlerWithProvider(ctx context.Context, provider providers.Provider, cf
 func serverConfig(cfg Config, rootCAs *x509.CertPool) *mcpoauth.ServerConfig {
 	return &mcpoauth.ServerConfig{
 		EnableClientIDMetadataDocuments: true,
-		Issuer:                        cfg.Issuer,
-		AllowPublicClientRegistration: cfg.AllowPublicRegistration,
-		AllowRefreshTokenRotation:     true,
-		TrustedAudiences:              cfg.TrustedAudiences,
-		AllowPrivateIPJWKSHosts:       cfg.AllowPrivateIPJWKSHosts,
-		JWKSRootCAs:                   rootCAs,
+		Issuer:                          cfg.Issuer,
+		AllowPublicClientRegistration:   cfg.AllowPublicRegistration,
+		AllowRefreshTokenRotation:       true,
+		TrustedAudiences:                cfg.TrustedAudiences,
+		AllowPrivateIPJWKSHosts:         cfg.AllowPrivateIPJWKSHosts,
+		JWKSRootCAs:                     rootCAs,
 	}
 }
 
