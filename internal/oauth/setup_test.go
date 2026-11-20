@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -22,6 +23,7 @@ const (
 	testMCPIssuer      = "https://mcp.example.com"
 	testRedirectURL    = "https://mcp.example.com/oauth/callback"
 	testGoogleClientID = "1234.apps.googleusercontent.com"
+	testJWKSHost       = "keys.internal.example"
 )
 
 func TestConfigFromEnvDefaults(t *testing.T) {
@@ -346,23 +348,56 @@ func TestNewHandlerWithProviderShortEncryptionKey(t *testing.T) {
 	}
 }
 
-func TestServerConfigAllowPrivateIPJWKS(t *testing.T) {
-	tests := []struct {
-		name string
-		cfg  Config
-		want bool
-	}{
-		{"dex, flag off stays SSRF-safe", Config{Provider: ProviderDex}, false},
-		{"dex, flag on allows the private JWKS", Config{Provider: ProviderDex, AllowPrivateIPJWKS: true}, true},
-		{"google ignores the flag", Config{Provider: ProviderGoogle, AllowPrivateIPJWKS: true}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := serverConfig(tt.cfg, nil).AllowPrivateIPJWKS; got != tt.want {
-				t.Errorf("AllowPrivateIPJWKS = %v, want %v", got, tt.want)
-			}
+func TestServerConfigDoesNotPassPrivateIPJWKS(t *testing.T) {
+	for _, provider := range []string{ProviderDex, ProviderGoogle} {
+		t.Run(provider, func(t *testing.T) {
+			got := serverConfig(Config{Provider: provider, AllowPrivateIPJWKS: true}, nil)
+			require.False(t, got.AllowPrivateIPJWKS) //nolint:staticcheck // SA1019: asserting the deprecated field stays unset
+			require.Empty(t, got.AllowPrivateIPJWKSHosts)
 		})
 	}
+}
+
+func TestConfigFromEnvPrivateIPJWKSHosts(t *testing.T) {
+	t.Setenv("MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS", " "+testJWKSHost+", ,jwks.internal.example ")
+
+	cfg, err := ConfigFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, []string{testJWKSHost, "jwks.internal.example"}, cfg.AllowPrivateIPJWKSHosts)
+
+	t.Setenv("MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS", "")
+	cfg, err = ConfigFromEnv()
+	require.NoError(t, err)
+	require.Empty(t, cfg.AllowPrivateIPJWKSHosts)
+}
+
+func TestServerConfigPassesPrivateIPJWKSHosts(t *testing.T) {
+	pool := x509.NewCertPool()
+	got := serverConfig(Config{
+		Issuer:                  testMCPIssuer,
+		Provider:                ProviderDex,
+		TrustedAudiences:        []string{"muster-client"},
+		AllowPrivateIPJWKSHosts: []string{testJWKSHost},
+	}, pool)
+	require.Equal(t, testMCPIssuer, got.Issuer)
+	require.Equal(t, []string{"muster-client"}, got.TrustedAudiences)
+	require.Equal(t, []string{testJWKSHost}, got.AllowPrivateIPJWKSHosts)
+	require.Same(t, pool, got.JWKSRootCAs)
+	require.False(t, got.AllowPrivateIPJWKS) //nolint:staticcheck // SA1019: asserting the deprecated field stays unset
+}
+
+func TestWarnPrivateIPJWKSInert(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+
+	warnPrivateIPJWKSInert(Config{}, logger)
+	require.Empty(t, buf.String())
+
+	warnPrivateIPJWKSInert(Config{AllowPrivateIPJWKS: true}, logger)
+	require.Contains(t, buf.String(), "level=WARN")
+	require.Contains(t, buf.String(), "MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS")
+	require.Contains(t, buf.String(), "has no effect")
+	require.Contains(t, buf.String(), "MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS")
 }
 
 // --- Dex CA file (private-CA installations) ---

@@ -115,7 +115,8 @@ All configuration is via environment variables.
 | `MCP_OAUTH_PROVIDER` | `dex` | Identity provider: `dex` or `google` (see the provider tables below) |
 | `OAUTH_REDIRECT_URL` | **required** | Callback URL registered at the provider (e.g. `https://mcp.example.com/oauth/callback`). The legacy `DEX_REDIRECT_URL` is still honoured when this is unset |
 | `MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION` | `false` | Allow unauthenticated dynamic client registration (dev/MCP Inspector only) |
-| `MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS` | `false` | Allow the forwarded-ID-token JWKS fetch against Dex on private/internal IPs (see [below](#private-address-jwks-fetching)); `dex` only |
+| `MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS` | — | Comma-separated hosts, other than the issuer's own, whose JWKS may resolve to a private address (see [below](#private-address-jwks-fetching)) |
+| `MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS` | `false` | Deprecated, no effect (see [below](#private-address-jwks-fetching)); logs a warning when `true` |
 | `OAUTH_TRUSTED_AUDIENCES` | — | Comma-separated client IDs trusted for SSO token forwarding |
 | `OAUTH_STORAGE` | `memory` | Token storage: `memory` or `valkey` |
 | `VALKEY_URL` | — | Valkey/Redis address (required when `OAUTH_STORAGE=valkey`) |
@@ -140,8 +141,8 @@ All configuration is via environment variables.
 | `GOOGLE_CLIENT_ID` | **required** | OAuth client ID of the Google Cloud OAuth client (`….apps.googleusercontent.com`) |
 | `GOOGLE_CLIENT_SECRET` | **required** | OAuth client secret of that client |
 
-Google's discovery, token and JWKS endpoints are public, so `DEX_CA_FILE` and
-`MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS` do not apply (they are ignored with a warning).
+Google's discovery, token and JWKS endpoints are public, so `DEX_CA_FILE` does not
+apply (it is ignored with a warning).
 Google ID tokens carry no `groups` claim: pair this provider with
 [tenancy mode `none`](#none-mode-single-tenant-prometheus) or a static all-users tenant list.
 
@@ -262,16 +263,19 @@ resolves to a private IP (RFC-1918 range) without any setting, and it follows `H
 Dex must be reached directly.
 
 The JWKS fetch that validates forwarded ID tokens (`OAUTH_TRUSTED_AUDIENCES`, e.g. from muster)
-keeps its SSRF protection. Set `MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS=true` to allow it to reach a
-private-IP Dex. The JWKS URL comes from the configured Dex issuer, never from the token.
-TLS verification is still enforced.
+keeps its SSRF protection, except that the configured Dex issuer host may resolve to a private
+address. The JWKS URL comes from the configured Dex issuer, never from the token. TLS
+verification is still enforced.
 
-```bash
-MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS=true
-DEX_ISSUER_URL=https://dex.mc.my-cluster.example.io   # resolves to 10.x.x.x
-```
+When the issuer's discovery document puts `jwks_uri` on another host that resolves to an
+RFC 1918 or RFC 4193 address, list that host in `MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS`
+(comma-separated; Helm `app.oauth.allowPrivateIPJWKSHosts`). Entries are exact hostnames,
+without port. The issuer host needs no entry. Loopback and link-local addresses stay refused
+for a listed host.
 
-In Helm: `app.oauth.allowPrivateIPJWKS: true`
+`MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS` and Helm `app.oauth.allowPrivateIPJWKS` are deprecated and
+have no effect; setting them to `true` logs a warning. Use
+`MCP_OAUTH_ALLOW_PRIVATE_IP_JWKS_HOSTS` for a JWKS host other than the issuer's.
 
 See [migration instructions](docs/private-jwks-migration.md) for obsolete private-URL settings.
 
@@ -629,7 +633,6 @@ When `DEX_ISSUER_URL` resolves to a private IP:
 app:
   oauth:
     enabled: true
-    allowPrivateIPJWKS: true    # private-IP Dex: forwarded-token JWKS
     dexClientSecret: "..."
     encryptionKey: "..."
 ```
