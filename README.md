@@ -117,7 +117,7 @@ All configuration is via environment variables.
 | Variable | Default | Description |
 |---|---|---|
 | `MCP_OAUTH_ISSUER` | **required** | Public base URL of this server (e.g. `https://mcp.example.com`) |
-| `MCP_OAUTH_ENCRYPTION_KEY` | — | 32-byte base64 AES-256-GCM key for token encryption (`openssl rand -base64 32`) |
+| `MCP_OAUTH_ENCRYPTION_KEY` | — | 32-byte AES-256-GCM key for token encryption, base64 (`openssl rand -base64 32`) or hex (`openssl rand -hex 32`) |
 | `MCP_OAUTH_PROVIDER` | `dex` | Identity provider: `dex` or `google` (see the provider tables below) |
 | `OAUTH_REDIRECT_URL` | **required** | Callback URL registered at the provider (e.g. `https://mcp.example.com/oauth/callback`). The legacy `DEX_REDIRECT_URL` is still honoured when this is unset |
 | `MCP_OAUTH_ALLOW_PUBLIC_REGISTRATION` | `false` | Allow unauthenticated dynamic client registration (dev/MCP Inspector only) |
@@ -560,7 +560,7 @@ app:
   oauth:
     enabled: true
     dexClientSecret: "..."        # stored in K8s Secret
-    encryptionKey: "..."          # openssl rand -hex 32
+    encryptionKey: "..."          # openssl rand -base64 32
     storage:
       type: valkey
       valkey:

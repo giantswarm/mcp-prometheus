@@ -68,7 +68,7 @@ Environment Variables:
 
 OAuth 2.1 (when --enable-oauth is set):
   MCP_OAUTH_ISSUER              - OAuth issuer URL (required)
-  MCP_OAUTH_ENCRYPTION_KEY      - AES-256-GCM key for token encryption (base64, required)
+  MCP_OAUTH_ENCRYPTION_KEY      - AES-256-GCM key for token encryption (32 bytes, base64 or hex, required)
   MCP_OAUTH_PROVIDER            - Identity provider: dex (default) or google
   OAUTH_REDIRECT_URL            - OAuth callback URL, e.g. https://mcp.example.com/oauth/callback
                                   (required; legacy DEX_REDIRECT_URL is still honoured)

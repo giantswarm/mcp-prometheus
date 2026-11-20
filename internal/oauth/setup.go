@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
@@ -30,7 +29,7 @@ type Config struct {
 	// Used as the OAuth issuer identifier and as the base for endpoint URLs.
 	Issuer string
 
-	// EncryptionKey is a 32-byte base64-encoded key used for AES-256-GCM token encryption.
+	// EncryptionKey is a 32-byte key, base64- or hex-encoded, used for AES-256-GCM token encryption.
 	// If empty, tokens are stored unencrypted (only suitable for development).
 	EncryptionKey string
 
@@ -376,19 +375,26 @@ func serverConfig(cfg Config, rootCAs *x509.CertPool) *mcpoauth.ServerConfig {
 	}
 }
 
+// encryptionKeyFormat is the MCP_OAUTH_ENCRYPTION_KEY format buildEncryptor
+// accepts, quoted in every message about the key.
+const encryptionKeyFormat = "32 random bytes, base64-encoded (openssl rand -base64 32) or hex-encoded (openssl rand -hex 32)"
+
 // buildEncryptor returns the storage-layer Encryptor configured by cfg.
 // Returns (nil, nil) when MCP_OAUTH_ENCRYPTION_KEY is unset; the store is
 // then constructed without encryption.
+//
+// security.DecodeKey tries base64 first, then hex: a 64-character hex key is
+// valid base64 too, but decodes to 48 bytes there and so falls through to
+// hex. muster decodes its key the same way.
 func buildEncryptor(cfg Config, logger *slog.Logger) (*security.Encryptor, error) {
 	if cfg.EncryptionKey == "" {
 		logger.Warn("MCP_OAUTH_ENCRYPTION_KEY is not set — OAuth tokens will be stored unencrypted. " +
-			"Set MCP_OAUTH_ENCRYPTION_KEY to a 64-hex-char AES-256 key for production use. " +
-			"Generate one with: openssl rand -hex 32")
+			"Set it for production use to " + encryptionKeyFormat + ".")
 		return nil, nil
 	}
-	keyBytes, err := base64.StdEncoding.DecodeString(cfg.EncryptionKey)
+	keyBytes, err := security.DecodeKey(cfg.EncryptionKey)
 	if err != nil {
-		return nil, fmt.Errorf("oauth: decode MCP_OAUTH_ENCRYPTION_KEY (must be base64): %w", err)
+		return nil, fmt.Errorf("oauth: decode MCP_OAUTH_ENCRYPTION_KEY, which must be %s: %w", encryptionKeyFormat, err)
 	}
 	enc, err := security.NewEncryptor(keyBytes)
 	if err != nil {
