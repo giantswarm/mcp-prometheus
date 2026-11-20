@@ -41,7 +41,7 @@ Use it when other tools fail to reach the server.
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     }
   },
@@ -75,7 +75,7 @@ For values over a time window use execute_range_query; for metric names use list
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     },
     "query": {
@@ -135,7 +135,7 @@ For a single point in time use execute_query.
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     },
     "query": {
@@ -202,7 +202,7 @@ Lists at most 50 series, even with a higher limit; narrow with matches. Returns 
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     },
     "start_time": {
@@ -276,7 +276,7 @@ For the alerts in Alertmanager use get_alertmanager_alerts. Prometheus only.
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     }
   },
@@ -302,7 +302,7 @@ For the alerts that notify, not silenced or inhibited, use get_alertmanager_aler
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     }
   },
@@ -328,7 +328,7 @@ For runtime state use get_runtime_info.
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     }
   },
@@ -354,7 +354,7 @@ For the live state of the scrape targets use get_targets. Prometheus only.
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     }
   },
@@ -380,7 +380,7 @@ For the scrape and rule configuration use get_config. Prometheus only.
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     }
   },
@@ -414,7 +414,7 @@ For the metadata as each scrape target exposes it use get_targets_metadata.
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     }
   },
@@ -453,7 +453,7 @@ Prefer the filters and exclude_alerts over a full dump. On Mimir it reads one te
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     },
     "rule_group": {
@@ -501,7 +501,7 @@ For the version use get_build_info. Prometheus only.
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     }
   },
@@ -527,7 +527,7 @@ For the metrics a target exposes use get_targets_metadata. Prometheus only.
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     }
   },
@@ -565,7 +565,7 @@ For one metric's metadata across targets use get_metric_metadata. Prometheus onl
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     }
   },
@@ -595,7 +595,7 @@ For the series of one metric use find_series. Prometheus only.
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     }
   },
@@ -633,7 +633,7 @@ For one label's values use list_label_values.
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     },
     "start_time": {
@@ -679,7 +679,7 @@ Lists at most 100 values, even with a higher limit; narrow with matches. For the
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     },
     "start_time": {
@@ -715,7 +715,7 @@ For the metric values use execute_range_query.
       "type": "string"
     },
     "prometheus_url": {
-      "description": "URL if not the configured one; Mimir's ends in /prometheus",
+      "description": "Optional backend URL; overrides must be enabled and other backends receive no configured credentials",
       "type": "string"
     },
     "query": {

@@ -161,6 +161,7 @@ func truncateBody(body []byte) string {
 // Prometheus authentication, TLS and default tenant settings.
 func alertmanagerConfig(params map[string]any, sc *server.ServerContext) (server.PrometheusConfig, error) {
 	config := sc.PrometheusConfig()
+	configuredURL := config.AlertmanagerURL
 
 	if u := getStringParam(params, paramAlertmanagerURL); u != "" {
 		if err := validateURL(paramAlertmanagerURL, u); err != nil {
@@ -171,8 +172,7 @@ func alertmanagerConfig(params map[string]any, sc *server.ServerContext) (server
 	if config.AlertmanagerURL == "" {
 		return server.PrometheusConfig{}, fmt.Errorf("%s parameter is required (ALERTMANAGER_URL is not set)", paramAlertmanagerURL)
 	}
-	config.URL = config.AlertmanagerURL
-	return config, nil
+	return selectBackend(config, configuredURL, config.AlertmanagerURL)
 }
 
 // tenantsToRead is the X-Scope-OrgID value for each selected org ID, the
