@@ -2,19 +2,22 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"strconv"
 	"sync"
 )
 
 // PrometheusConfig holds the Prometheus server configuration
 type PrometheusConfig struct {
-	URL      string
-	Username string
-	Password string
-	Token    string
-	OrgID    string
+	DisableURLOverrides bool
+	URL                 string
+	Username            string
+	Password            string
+	Token               string
+	OrgID               string
 
 	// TLS configuration
 	TLSSkipVerify bool   // PROMETHEUS_TLS_SKIP_VERIFY — disable TLS certificate verification
@@ -126,6 +129,14 @@ func NewServerContext(ctx context.Context, opts ...ServerOption) (*ServerContext
 		}
 	}
 
+	if value, exists := os.LookupEnv("MCP_ALLOW_BACKEND_URL_OVERRIDES"); exists {
+		allowed, err := strconv.ParseBool(value)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("MCP_ALLOW_BACKEND_URL_OVERRIDES must be a boolean")
+		}
+		sc.prometheusConfig.DisableURLOverrides = !allowed
+	}
 	return sc, nil
 }
 

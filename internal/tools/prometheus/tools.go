@@ -127,7 +127,7 @@ func withPrometheusConnectionParams(scope tenantScope, options ...mcp.ToolOption
 	}
 	connectionParams := []mcp.ToolOption{
 		mcp.WithString("prometheus_url",
-			mcp.Description("URL if not the configured one; Mimir's ends in /prometheus"),
+			mcp.Description("Optional backend URL; overrides must be enabled and other backends receive no configured credentials"),
 		),
 		mcp.WithString(paramOrgID, mcp.Description(orgID)),
 	}
@@ -670,7 +670,11 @@ func createClientFromParams(ctx context.Context, params map[string]any, defaultC
 		if err := validatePrometheusURL(prometheusURL); err != nil {
 			return nil, err
 		}
-		config.URL = prometheusURL
+		selected, selectionErr := selectBackend(config, config.URL, prometheusURL)
+		if selectionErr != nil {
+			return nil, selectionErr
+		}
+		config = selected
 		sc.Logger().Debug("Overriding Prometheus URL from parameter", "url", prometheusURL)
 	}
 

@@ -78,6 +78,11 @@ func NewClient(config server.PrometheusConfig, logger *slog.Logger) (*Client, er
 		return nil, fmt.Errorf("prometheus URL is required")
 	}
 
+	baseURL, err := backendURL(config.URL)
+	if err != nil {
+		return nil, err
+	}
+
 	// Start with default transport, or a custom TLS transport when needed
 	var roundTripper = http.DefaultTransport
 
@@ -122,10 +127,9 @@ func NewClient(config server.PrometheusConfig, logger *slog.Logger) (*Client, er
 		logger.Debug("Using organization ID", "orgID", config.OrgID)
 	}
 
-	promClient, err := api.NewClient(api.Config{
-		Address:      config.URL,
-		RoundTripper: roundTripper,
-	})
+	roundTripper = &backendTransport{base: baseURL, transport: roundTripper}
+	httpClient := &http.Client{Transport: roundTripper, CheckRedirect: rejectBackendRedirect}
+	promClient, err := api.NewClient(api.Config{Address: config.URL, Client: httpClient})
 	if err != nil {
 		return nil, fmt.Errorf("create Prometheus API client for %q: %w", config.URL, err)
 	}
@@ -135,7 +139,7 @@ func NewClient(config server.PrometheusConfig, logger *slog.Logger) (*Client, er
 	return &Client{
 		client:     v1.NewAPI(promClient),
 		apiClient:  promClient,
-		httpClient: &http.Client{Transport: roundTripper, Timeout: 10 * time.Second},
+		httpClient: &http.Client{Transport: roundTripper, Timeout: 10 * time.Second, CheckRedirect: rejectBackendRedirect},
 		config:     config,
 		logger:     logger,
 	}, nil

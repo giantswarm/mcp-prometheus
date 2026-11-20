@@ -10,7 +10,7 @@
 // metrics metadata, and retrieving target information.
 //
 // Environment Variables:
-//   - PROMETHEUS_URL: Optional Prometheus server URL (takes precedence over tool parameters)
+//   - PROMETHEUS_URL: Optional default Prometheus server URL
 //   - PROMETHEUS_ORGID: Optional organization ID for multi-tenant setups (takes precedence over tool parameters)
 //   - PROMETHEUS_USERNAME: Optional basic auth username
 //   - PROMETHEUS_PASSWORD: Optional basic auth password
