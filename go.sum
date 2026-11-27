@@ -122,8 +122,8 @@ github.com/giantswarm/go-selfupdate v1.7.7 h1:VU9EUr+VRlnd/XRPNLy4SVnObdqwuXE7Fn
 github.com/giantswarm/go-selfupdate v1.7.7/go.mod h1:nqRW1Io8Ixo3x8tSnLKkpfenWn2PRf/Zcu548PZp780=
 github.com/giantswarm/mcp-oauth v1.20.0 h1:G0RiZJqerdpBdKcvqxGtYV5BBCWyFPxMS/ZarGfdRYk=
 github.com/giantswarm/mcp-oauth v1.20.0/go.mod h1:CejmfrIg1cGdqzTb/F0N0zwpa1fXgpvH3cpDcswf5yY=
-github.com/giantswarm/mcp-toolkit v0.5.3 h1:wfRRF3P+33XE0kfqFdrfVR2NThSKffekFScRMculo6g=
-github.com/giantswarm/mcp-toolkit v0.5.3/go.mod h1:m8dbpEeOg25kldNTnBh/al5ux4y5PYvbg2KhfHiUinc=
+github.com/giantswarm/mcp-toolkit v0.12.0 h1:BRbQfLP+/CBfFuzUnxbG6DxKRIgdl+O0qLX3C976M6I=
+github.com/giantswarm/mcp-toolkit v0.12.0/go.mod h1:o6nUYtYy4g8MVVuGyUl0sJH/MZQdnDuVyhM7WICdpwc=
 github.com/giantswarm/selfupdate-cosign v0.3.28 h1:HERE1xBN2aZCfzxWYHtBMr2hwb8encxh+lQv1WPHxxk=
 github.com/giantswarm/selfupdate-cosign v0.3.28/go.mod h1:SJAwn34MAlODL5B01X6cCOtGPI1b+maJIO+iC08e87I=
 github.com/go-chi/chi/v5 v5.5.0 h1:xdKQ1dJmVJsmgahrXSKhUx8NyVPzpwdlyrrQFpMPJgg=
@@ -211,8 +211,8 @@ github.com/google/go-github/v93 v93.0.0/go.mod h1:l8I3rt4/mdjANKpg4Y84LEy9HJQCet
 github.com/google/go-querystring v1.2.0 h1:yhqkPbu2/OH+V9BfpCVPZkNmUXhb2gBxJArfhIxNtP0=
 github.com/google/go-querystring v1.2.0/go.mod h1:8IFJqpSRITyJ8QhQ13bmbeMBDfmeEJZD5A0egEOmkqU=
 github.com/google/gofuzz v1.0.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
-github.com/google/jsonschema-go v0.4.2 h1:tmrUohrwoLZZS/P3x7ex0WAVknEkBZM46iALbcqoRA8=
-github.com/google/jsonschema-go v0.4.2/go.mod h1:r5quNTdLOYEz95Ru18zA0ydNbBuYoo9tgaYcxEYhJVE=
+github.com/google/jsonschema-go v0.4.3 h1:/DBOLZTfDow7pe2GmaJNhltueGTtDKICi8V8p+DQPd0=
+github.com/google/jsonschema-go v0.4.3/go.mod h1:r5quNTdLOYEz95Ru18zA0ydNbBuYoo9tgaYcxEYhJVE=
 github.com/google/s2a-go v0.1.9 h1:LGD7gtMgezd8a/Xak7mEWL0PjoTQFvpRudN895yqKW0=
 github.com/google/s2a-go v0.1.9/go.mod h1:YA0Ei2ZQL3acow2O62kdp9UlnvMmU7kA6Eutn0dXayM=
 github.com/google/trillian v1.7.3 h1:hziW+vo4czis48tzx2GK5xRBl/ZxBA9B0/UR5avXOro=
