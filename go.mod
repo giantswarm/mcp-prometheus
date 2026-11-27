@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/giantswarm/go-selfupdate v1.7.7
 	github.com/giantswarm/mcp-oauth v1.20.0
-	github.com/giantswarm/mcp-toolkit v0.5.3
+	github.com/giantswarm/mcp-toolkit v0.12.0
 	github.com/giantswarm/selfupdate-cosign v0.3.28
 	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/mark3labs/mcp-go v1.6.0
@@ -74,7 +74,7 @@ require (
 	github.com/google/go-containerregistry v0.21.7 // indirect
 	github.com/google/go-github/v93 v93.0.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
-	github.com/google/jsonschema-go v0.4.2 // indirect
+	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
